@@ -8,12 +8,11 @@ import com.yagodaoud.venceja.service.BoletoService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
-import org.springframework.http.CacheControl;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
@@ -21,12 +20,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.time.Duration;
-import java.time.temporal.ChronoUnit;
-import java.time.temporal.TemporalUnit;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -63,7 +59,7 @@ public class BoletoController {
             }
 
             CompletableFuture<BoletoResponse> future = boletoService.scanBoleto(file, request, userEmail);
-            BoletoResponse response = future.get(); // Aguarda conclusão
+            BoletoResponse response = future.get();
 
             ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
                     .data(response)
@@ -105,6 +101,8 @@ public class BoletoController {
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataInicio,
+            @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataFim,
             Authentication authentication) {
         String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
 
@@ -119,7 +117,13 @@ public class BoletoController {
             }
         }
 
-        Page<BoletoResponse> boletos = boletoService.listBoletos(userEmail, statusEnum, pageable);
+        // Validação de período
+        if (dataInicio != null && dataFim != null && dataInicio.isAfter(dataFim)) {
+            throw new IllegalArgumentException("Data inicial não pode ser posterior à data final");
+        }
+
+        Page<BoletoResponse> boletos = boletoService.listBoletos(
+                userEmail, statusEnum, dataInicio, dataFim, pageable);
         List<BoletoResponse> boletosList = new ArrayList<>(boletos.getContent());
 
         ApiResponse.Meta meta = ApiResponse.Meta.builder()

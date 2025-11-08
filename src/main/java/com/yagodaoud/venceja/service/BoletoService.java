@@ -21,7 +21,6 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
-import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.concurrent.CompletableFuture;
 
@@ -44,18 +43,15 @@ public class BoletoService {
      */
     @Transactional
     public BoletoResponse createBoleto(BoletoRequest request, String userEmail) {
-        // Valida usuário
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
 
-        // Valida dados obrigatórios
         if (request.getValor() == null || request.getVencimento() == null ||
                 request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
             throw new IllegalArgumentException(
                     "Dados obrigatórios não fornecidos. Valor, vencimento e fornecedor são necessários.");
         }
 
-        // Valida e busca categoria se fornecida
         CategoriaEntity categoria = null;
         if (request.getCategoriaId() != null) {
             categoria = categoriaRepository.findById(request.getCategoriaId())
@@ -66,7 +62,6 @@ public class BoletoService {
             }
         }
 
-        // Cria entidade
         BoletoEntity boleto = BoletoEntity.builder()
                 .user(user)
                 .fornecedor(request.getFornecedor())
@@ -89,22 +84,18 @@ public class BoletoService {
      */
     @Transactional
     public BoletoResponse updateBoleto(long id, BoletoRequest request, String userEmail) {
-        // Valida usuário
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
 
-        // Valida dados obrigatórios
         if (request.getValor() == null || request.getVencimento() == null ||
                 request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
             throw new IllegalArgumentException(
                     "Dados obrigatórios não fornecidos. Valor, vencimento e fornecedor são necessários.");
         }
 
-        // Valida e busca boleto
         BoletoEntity boleto = boletoRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
-        // Valida e busca categoria se fornecida
         CategoriaEntity categoria = null;
         if (request.getCategoriaId() != null) {
             categoria = categoriaRepository.findById(request.getCategoriaId())
@@ -115,7 +106,6 @@ public class BoletoService {
             }
         }
 
-        // Atualiza entidade
         boleto.setFornecedor(request.getFornecedor());
         boleto.setValor(request.getValor());
         boleto.setVencimento(request.getVencimento());
@@ -128,7 +118,6 @@ public class BoletoService {
 
         return toResponse(boleto);
     }
-
 
     /**
      * Processa upload de boleto com OCR assíncrono
@@ -145,11 +134,9 @@ public class BoletoService {
             byte[] fileBytes = file.getBytes();
             String fileName = file.getOriginalFilename();
 
-            // Faz OCR do documento
             String ocrText = visionService.detectDocumentText(fileBytes);
             log.info("OCR concluído, texto extraído: {} caracteres", ocrText != null ? ocrText.length() : 0);
 
-            // Monta request com dados do OCR (se não fornecidos manualmente)
             BoletoRequest mergedRequest = new BoletoRequest();
 
             mergedRequest.setValor(
@@ -179,11 +166,9 @@ public class BoletoService {
             mergedRequest.setObservacoes(request != null ? request.getObservacoes() : null);
             mergedRequest.setCategoriaId(request != null ? request.getCategoriaId() : null);
 
-            // Faz upload da imagem para Firebase
             String imageUrl = firebaseService.uploadBoletoImage(fileBytes, fileName);
             log.info("Imagem do boleto salva: {}", imageUrl);
 
-            // Cria o boleto usando o método centralizado
             BoletoResponse response = createBoleto(mergedRequest, userEmail);
 
             return CompletableFuture.completedFuture(response);
@@ -195,25 +180,22 @@ public class BoletoService {
     }
 
     /**
-     * Lista boletos do usuário com paginação
+     * Lista boletos do usuário com paginação e filtros de período
      */
     @Transactional(readOnly = true)
     public Page<BoletoResponse> listBoletos(
             String userEmail,
             BoletoStatus status,
+            LocalDate dataInicio,
+            LocalDate dataFim,
             Pageable pageable) {
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
 
-        // Atualiza status de boletos vencidos
         updateOverdueBoletos(user.getId());
 
-        Page<BoletoEntity> boletos;
-        if (status != null) {
-            boletos = boletoRepository.findByUserIdAndStatus(user.getId(), status, pageable);
-        } else {
-            boletos = boletoRepository.findByUserIdAndOptionalStatus(user.getId(), null, pageable);
-        }
+        Page<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
+                user.getId(), status, dataInicio, dataFim, pageable);
 
         return boletos.map(this::toResponse);
     }
