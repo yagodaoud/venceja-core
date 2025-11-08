@@ -8,6 +8,7 @@ import com.yagodaoud.venceja.service.BoletoService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.SneakyThrows;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -23,6 +24,8 @@ import org.springframework.web.multipart.MultipartFile;
 import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -75,8 +78,9 @@ public class BoletoController {
         }
     }
 
+    @SneakyThrows
     @GetMapping
-    public ResponseEntity<ApiResponse<Page<BoletoResponse>>> listBoletos(
+    public ResponseEntity<ApiResponse<List<BoletoResponse>>> listBoletos(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(required = false) String status,
@@ -95,6 +99,7 @@ public class BoletoController {
         }
 
         Page<BoletoResponse> boletos = boletoService.listBoletos(userEmail, statusEnum, pageable);
+        List<BoletoResponse> boletosList = new ArrayList<>(boletos.getContent());
 
         ApiResponse.Meta meta = ApiResponse.Meta.builder()
                 .total(boletos.getTotalElements())
@@ -102,16 +107,13 @@ public class BoletoController {
                 .size(size)
                 .build();
 
-        ApiResponse<Page<BoletoResponse>> response = ApiResponse.<Page<BoletoResponse>>builder()
-                .data(boletos)
+        ApiResponse<List<BoletoResponse>> response = ApiResponse.<List<BoletoResponse>>builder()
+                .data(boletosList)
                 .message("Boletos listados com sucesso")
                 .meta(meta)
                 .build();
 
-        return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(Duration.of(300, ChronoUnit.MILLIS)))
-                .eTag(String.valueOf(boletos.getTotalElements()))
-                .body(response);
+        return ResponseEntity.ok(response);
     }
 
     @PutMapping("/{id}/pagar")

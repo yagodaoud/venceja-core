@@ -38,6 +38,7 @@ credentials.json
 service-account.json
 
 # H2 Database
+/db
 *.db
 *.mv.db
 *.trace.db
