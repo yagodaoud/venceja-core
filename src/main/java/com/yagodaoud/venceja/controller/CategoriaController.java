@@ -92,4 +92,19 @@ public class CategoriaController {
 
         return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteCategoria(
+            @PathVariable Long id,
+            Authentication authentication) {
+        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+
+        categoriaService.deleteCategoria(id, userEmail);
+
+        ApiResponse<Void> response = ApiResponse.<Void>builder()
+                .message("Categoria deletada com sucesso")
+                .build();
+
+        return ResponseEntity.ok(response);
+    }
 }

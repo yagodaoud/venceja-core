@@ -7,3 +7,5 @@ CREATE TABLE IF NOT EXISTS categorias (
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT fk_categorias_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
+
+CREATE INDEX IF NOT EXISTS idx_categorias_user_id ON categorias(user_id);
