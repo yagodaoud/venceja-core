@@ -2,10 +2,13 @@ package com.yagodaoud.venceja.service;
 
 import com.yagodaoud.venceja.dto.BoletoRequest;
 import com.yagodaoud.venceja.dto.BoletoResponse;
+import com.yagodaoud.venceja.dto.CategoriaResponse;
 import com.yagodaoud.venceja.entity.BoletoEntity;
 import com.yagodaoud.venceja.entity.BoletoStatus;
+import com.yagodaoud.venceja.entity.CategoriaEntity;
 import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.BoletoRepository;
+import com.yagodaoud.venceja.repository.CategoriaRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -31,9 +34,101 @@ import java.util.concurrent.CompletableFuture;
 public class BoletoService {
 
     private final BoletoRepository boletoRepository;
+    private final CategoriaRepository categoriaRepository;
     private final UserRepository userRepository;
     private final VisionService visionService;
     private final FirebaseService firebaseService;
+
+    /**
+     * Cria um boleto manualmente (sem OCR)
+     */
+    @Transactional
+    public BoletoResponse createBoleto(BoletoRequest request, String userEmail) {
+        // Valida usuário
+        UserEntity user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+
+        // Valida dados obrigatórios
+        if (request.getValor() == null || request.getVencimento() == null ||
+                request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Dados obrigatórios não fornecidos. Valor, vencimento e fornecedor são necessários.");
+        }
+
+        // Valida e busca categoria se fornecida
+        CategoriaEntity categoria = null;
+        if (request.getCategoriaId() != null) {
+            categoria = categoriaRepository.findById(request.getCategoriaId())
+                    .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
+
+            if (!categoria.getUser().getId().equals(user.getId())) {
+                throw new IllegalArgumentException("Categoria não pertence ao usuário");
+            }
+        }
+
+        // Cria entidade
+        BoletoEntity boleto = BoletoEntity.builder()
+                .user(user)
+                .fornecedor(request.getFornecedor())
+                .valor(request.getValor())
+                .vencimento(request.getVencimento())
+                .codigoBarras(request.getCodigoBarras())
+                .status(determineStatus(request.getVencimento()))
+                .observacoes(request.getObservacoes())
+                .categoria(categoria)
+                .build();
+
+        boleto = boletoRepository.save(boleto);
+        log.info("Boleto criado manualmente: ID {}", boleto.getId());
+
+        return toResponse(boleto);
+    }
+
+    /**
+     * Atualiza um boleto
+     */
+    @Transactional
+    public BoletoResponse updateBoleto(long id, BoletoRequest request, String userEmail) {
+        // Valida usuário
+        UserEntity user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+
+        // Valida dados obrigatórios
+        if (request.getValor() == null || request.getVencimento() == null ||
+                request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
+            throw new IllegalArgumentException(
+                    "Dados obrigatórios não fornecidos. Valor, vencimento e fornecedor são necessários.");
+        }
+
+        // Valida e busca boleto
+        BoletoEntity boleto = boletoRepository.findById(id)
+                .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
+
+        // Valida e busca categoria se fornecida
+        CategoriaEntity categoria = null;
+        if (request.getCategoriaId() != null) {
+            categoria = categoriaRepository.findById(request.getCategoriaId())
+                    .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
+
+            if (!categoria.getUser().getId().equals(user.getId())) {
+                throw new IllegalArgumentException("Categoria não pertence ao usuário");
+            }
+        }
+
+        // Atualiza entidade
+        boleto.setFornecedor(request.getFornecedor());
+        boleto.setValor(request.getValor());
+        boleto.setVencimento(request.getVencimento());
+        boleto.setCodigoBarras(request.getCodigoBarras());
+        boleto.setObservacoes(request.getObservacoes());
+        boleto.setCategoria(categoria);
+
+        boleto = boletoRepository.save(boleto);
+        log.info("Boleto atualizado: ID {}", boleto.getId());
+
+        return toResponse(boleto);
+    }
+
 
     /**
      * Processa upload de boleto com OCR assíncrono
@@ -54,50 +149,44 @@ public class BoletoService {
             String ocrText = visionService.detectDocumentText(fileBytes);
             log.info("OCR concluído, texto extraído: {} caracteres", ocrText != null ? ocrText.length() : 0);
 
-            // Extrai dados do OCR ou usa dados fornecidos manualmente
-            BigDecimal valor = (request != null && request.getValor() != null)
-                    ? request.getValor()
-                    : visionService.extractValor(ocrText);
+            // Monta request com dados do OCR (se não fornecidos manualmente)
+            BoletoRequest mergedRequest = new BoletoRequest();
 
-            LocalDate vencimento = (request != null && request.getVencimento() != null)
-                    ? request.getVencimento()
-                    : visionService.extractVencimento(ocrText);
+            mergedRequest.setValor(
+                    (request != null && request.getValor() != null)
+                            ? request.getValor()
+                            : visionService.extractValor(ocrText)
+            );
 
-            String fornecedor = (request != null && request.getFornecedor() != null
-                    && !request.getFornecedor().isEmpty())
+            mergedRequest.setVencimento(
+                    (request != null && request.getVencimento() != null)
+                            ? request.getVencimento()
+                            : visionService.extractVencimento(ocrText)
+            );
+
+            mergedRequest.setFornecedor(
+                    (request != null && request.getFornecedor() != null && !request.getFornecedor().isEmpty())
                             ? request.getFornecedor()
-                            : visionService.extractFornecedor(ocrText);
+                            : visionService.extractFornecedor(ocrText)
+            );
 
-            String codigoBarras = (request != null && request.getCodigoBarras() != null
-                    && !request.getCodigoBarras().isEmpty())
+            mergedRequest.setCodigoBarras(
+                    (request != null && request.getCodigoBarras() != null && !request.getCodigoBarras().isEmpty())
                             ? request.getCodigoBarras()
-                            : visionService.extractCodigoBarras(ocrText);
+                            : visionService.extractCodigoBarras(ocrText)
+            );
 
-            // Validações
-            if (valor == null || vencimento == null || (fornecedor == null || fornecedor.isEmpty())) {
-                throw new IllegalArgumentException(
-                        "Dados obrigatórios não encontrados no OCR. Valor, vencimento e fornecedor são necessários.");
-            }
+            mergedRequest.setObservacoes(request != null ? request.getObservacoes() : null);
+            mergedRequest.setCategoriaId(request != null ? request.getCategoriaId() : null);
 
             // Faz upload da imagem para Firebase
             String imageUrl = firebaseService.uploadBoletoImage(fileBytes, fileName);
+            log.info("Imagem do boleto salva: {}", imageUrl);
 
-            // Cria entidade
-            BoletoEntity boleto = BoletoEntity.builder()
-                    .user(user)
-                    .fornecedor(fornecedor)
-                    .valor(valor)
-                    .vencimento(vencimento)
-                    .codigoBarras(codigoBarras)
-                    .status(determineStatus(vencimento))
-                    .observacoes(request != null ? request.getObservacoes() : null)
-                    .build();
+            // Cria o boleto usando o método centralizado
+            BoletoResponse response = createBoleto(mergedRequest, userEmail);
 
-            boleto = boletoRepository.save(boleto);
-
-            log.info("Boleto criado com sucesso: ID {}", boleto.getId());
-
-            return CompletableFuture.completedFuture(toResponse(boleto));
+            return CompletableFuture.completedFuture(response);
 
         } catch (Exception e) {
             log.error("Erro ao processar boleto: {}", e.getMessage(), e);
@@ -196,6 +285,15 @@ public class BoletoService {
      * Converte entidade para DTO de resposta
      */
     private BoletoResponse toResponse(BoletoEntity boleto) {
+        CategoriaResponse categoriaResponse = null;
+        if (boleto.getCategoria() != null) {
+            categoriaResponse = CategoriaResponse.builder()
+                    .id(boleto.getCategoria().getId())
+                    .nome(boleto.getCategoria().getNome())
+                    .cor(boleto.getCategoria().getCor())
+                    .build();
+        }
+
         return BoletoResponse.builder()
                 .id(boleto.getId())
                 .userId(boleto.getUser().getId())
@@ -207,6 +305,7 @@ public class BoletoService {
                 .comprovanteUrl(boleto.getComprovanteUrl())
                 .semComprovante(boleto.getSemComprovante())
                 .observacoes(boleto.getObservacoes())
+                .categoria(categoriaResponse)
                 .createdAt(boleto.getCreatedAt())
                 .updatedAt(boleto.getUpdatedAt())
                 .build();

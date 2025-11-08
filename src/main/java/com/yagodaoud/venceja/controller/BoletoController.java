@@ -78,6 +78,28 @@ public class BoletoController {
         }
     }
 
+    @PostMapping
+    public ResponseEntity<ApiResponse<BoletoResponse>> createBoleto(
+            @Valid @RequestBody BoletoRequest request,
+            Authentication authentication) {
+        try {
+            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+
+            BoletoResponse response = boletoService.createBoleto(request, userEmail);
+
+            ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
+                    .data(response)
+                    .message("Boleto criado com sucesso")
+                    .build();
+
+            return ResponseEntity.status(HttpStatus.CREATED).body(apiResponse);
+
+        } catch (Exception e) {
+            log.error("Erro ao criar boleto: {}", e.getMessage(), e);
+            throw new RuntimeException("Erro ao criar boleto: " + e.getMessage(), e);
+        }
+    }
+
     @GetMapping
     public ResponseEntity<ApiResponse<List<BoletoResponse>>> listBoletos(
             @RequestParam(defaultValue = "0") int page,
@@ -113,6 +135,29 @@ public class BoletoController {
                 .build();
 
         return ResponseEntity.ok(response);
+    }
+
+    @PutMapping("/{id}")
+    public ResponseEntity<ApiResponse<BoletoResponse>> updateBoleto(
+            @PathVariable Long id,
+            @Valid @RequestBody BoletoRequest request,
+            Authentication authentication) {
+        try {
+            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+
+            BoletoResponse response = boletoService.updateBoleto(id, request, userEmail);
+
+            ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
+                    .data(response)
+                    .message("Boleto atualizado com sucesso")
+                    .build();
+
+            return ResponseEntity.ok(apiResponse);
+
+        } catch (Exception e) {
+            log.error("Erro ao atualizar boleto: {}", e.getMessage(), e);
+            throw new RuntimeException("Erro ao atualizar boleto: " + e.getMessage(), e);
+        }
     }
 
     @PutMapping("/{id}/pagar")

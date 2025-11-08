@@ -31,6 +31,10 @@ public class BoletoEntity {
     @JoinColumn(name = "user_id", nullable = false)
     private UserEntity user;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "categoria_id")
+    private CategoriaEntity categoria;
+
     @Column(nullable = false)
     private String fornecedor;
 

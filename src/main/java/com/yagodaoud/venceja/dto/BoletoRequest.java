@@ -29,4 +29,6 @@ public class BoletoRequest {
     private String codigoBarras;
 
     private String observacoes;
+
+    private Long categoriaId;
 }

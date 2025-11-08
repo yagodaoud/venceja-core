@@ -34,6 +34,8 @@ public class BoletoResponse {
     private Boolean semComprovante;
     private String observacoes;
 
+    private CategoriaResponse categoria;
+
     @JsonFormat(pattern = "dd/MM/yyyy HH:mm:ss")
     private LocalDateTime createdAt;
 
