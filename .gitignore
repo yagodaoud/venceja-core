@@ -1,0 +1,56 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+buildNumber.properties
+.mvn/timing.properties
+.mvn/wrapper/maven-wrapper.jar
+
+# IDE
+.idea/
+*.iws
+*.iml
+*.ipr
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Google Cloud credentials
+*.json
+!package.json
+!package-lock.json
+credentials.json
+service-account.json
+
+# H2 Database
+*.db
+*.mv.db
+*.trace.db
+
+# Compiled classes
+*.class
+
+# Spring Boot
+application-local.yml
+application-*.properties
+!application.yml
+!application.properties
+
+# OS
+Thumbs.db
+.DS_Store

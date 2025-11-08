@@ -1,0 +1,44 @@
+package com.yagodaoud.venceja.repository;
+
+import com.yagodaoud.venceja.entity.BoletoEntity;
+import com.yagodaoud.venceja.entity.BoletoStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
+import org.springframework.stereotype.Repository;
+
+import java.time.LocalDate;
+import java.util.List;
+
+/**
+ * Repositório para boletos
+ */
+@Repository
+public interface BoletoRepository extends JpaRepository<BoletoEntity, Long> {
+
+    Page<BoletoEntity> findByUserId(Long userId, Pageable pageable);
+
+    Page<BoletoEntity> findByUserIdAndStatus(Long userId, BoletoStatus status, Pageable pageable);
+
+    @Query("SELECT b FROM BoletoEntity b WHERE b.user.id = :userId " +
+            "AND (:status IS NULL OR b.status = :status) " +
+            "ORDER BY b.vencimento ASC")
+    Page<BoletoEntity> findByUserIdAndOptionalStatus(
+            @Param("userId") Long userId,
+            @Param("status") BoletoStatus status,
+            Pageable pageable);
+
+    @Query("SELECT b FROM BoletoEntity b WHERE b.status = 'PENDENTE' " +
+            "AND b.vencimento <= :maxDate " +
+            "AND b.vencimento >= :minDate")
+    List<BoletoEntity> findPendingBoletosNearDueDate(
+            @Param("minDate") LocalDate minDate,
+            @Param("maxDate") LocalDate maxDate);
+
+    @Query("SELECT b FROM BoletoEntity b WHERE b.user.id = :userId " +
+            "AND b.status = 'PENDENTE' " +
+            "AND b.vencimento < CURRENT_DATE")
+    List<BoletoEntity> findOverdueBoletosByUserId(@Param("userId") Long userId);
+}

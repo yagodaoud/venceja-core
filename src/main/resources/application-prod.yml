@@ -1,0 +1,25 @@
+# Configurações específicas para produção (Railway)
+spring:
+  datasource:
+    url: ${DATABASE_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+    driver-class-name: org.postgresql.Driver
+  
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+  
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+
+# Logging em produção
+logging:
+  level:
+    root: INFO
+    com.yagodaoud.venceja: INFO
+    org.springframework.security: WARN
