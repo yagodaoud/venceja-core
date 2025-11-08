@@ -20,6 +20,9 @@ import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Duration;
+import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 
@@ -106,7 +109,7 @@ public class BoletoController {
                 .build();
 
         return ResponseEntity.ok()
-                .cacheControl(CacheControl.maxAge(300))
+                .cacheControl(CacheControl.maxAge(Duration.of(300, ChronoUnit.MILLIS)))
                 .eTag(String.valueOf(boletos.getTotalElements()))
                 .body(response);
     }

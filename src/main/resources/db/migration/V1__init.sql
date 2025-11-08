@@ -39,5 +39,5 @@ CREATE INDEX IF NOT EXISTS idx_boletos_user_status ON boletos(user_id, status);
 -- Usuário dummy para testes (senha: password123 - hash BCrypt)
 -- Nota: Pode falhar se usuário já existir (ok para desenvolvimento)
 INSERT INTO users (email, password, nome) 
-SELECT 'admin@venceja.com', '$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy', 'Admin VenceJa'
+SELECT 'admin@venceja.com', '$2y$10$F1iImS/DBK8yUJvRdsjhDuwxC30ZfD5YFaZipm5eYDBR7SAhbz7wO', 'Admin VenceJa'
 WHERE NOT EXISTS (SELECT 1 FROM users WHERE email = 'admin@venceja.com');

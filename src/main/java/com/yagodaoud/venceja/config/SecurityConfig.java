@@ -78,7 +78,7 @@ public class SecurityConfig {
         CorsConfiguration configuration = new CorsConfiguration();
         configuration.setAllowedOrigins(Arrays.asList(
                 "http://localhost:19006", // Expo dev
-                "http://localhost:5173", // Vite
+                "http://localhost:8081", // Vite
                 "http://localhost:3000" // React dev
         ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
