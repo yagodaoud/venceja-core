@@ -78,7 +78,6 @@ public class BoletoController {
         }
     }
 
-    @SneakyThrows
     @GetMapping
     public ResponseEntity<ApiResponse<List<BoletoResponse>>> listBoletos(
             @RequestParam(defaultValue = "0") int page,
