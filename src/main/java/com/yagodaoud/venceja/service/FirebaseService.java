@@ -116,4 +116,38 @@ public class FirebaseService {
                 : "image/jpeg";
         return uploadFile(fileBytes, fileName, contentType);
     }
+
+    /**
+     * Deleta um arquivo do Firebase utilizando a url
+     * @param fileUrl Url completa do arquivo
+     * @return true se apagar, false se não encontrar
+     */
+    public boolean deleteFile(String fileUrl) {
+        if (storage == null || fileUrl == null || fileUrl.isEmpty()) {
+            log.warn("Firebase Storage não inicializado ou URL inválida");
+            return false;
+        }
+
+        try {
+            String objectName = fileUrl.substring(fileUrl.indexOf("boletos/"));
+            
+            if (objectName.contains("?")) {
+                objectName = objectName.substring(0, objectName.indexOf("?"));
+            }
+            
+            log.info("Deletando arquivo do Firebase Storage: {}", objectName);
+            boolean deleted = storage.delete(BlobId.of(bucketName, objectName));
+            
+            if (deleted) {
+                log.info("Arquivo deletado com sucesso: {}", objectName);
+            } else {
+                log.warn("Arquivo não encontrado no Firebase Storage: {}", objectName);
+            }
+            
+            return deleted;
+        } catch (Exception e) {
+            log.error("Erro ao deletar arquivo do Firebase Storage: {}", e.getMessage(), e);
+            return false;
+        }
+    }
 }

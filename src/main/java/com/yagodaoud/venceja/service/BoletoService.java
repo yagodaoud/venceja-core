@@ -71,7 +71,6 @@ public class BoletoService {
                 .status(determineStatus(request.getVencimento()))
                 .observacoes(request.getObservacoes())
                 .categoria(categoria)
-                .comprovanteUrl(request.getImagemUrl())
                 .build();
 
         boleto = boletoRepository.save(boleto);
@@ -166,11 +165,6 @@ public class BoletoService {
 
             mergedRequest.setObservacoes(request != null ? request.getObservacoes() : null);
             mergedRequest.setCategoriaId(request != null ? request.getCategoriaId() : null);
-
-            String imageUrl = firebaseService.uploadBoletoImage(fileBytes, fileName);
-            log.info("Imagem do boleto salva: {}", imageUrl);
-
-            mergedRequest.setImagemUrl(imageUrl);
 
             BoletoResponse response = createBoleto(mergedRequest, userEmail);
 
@@ -294,5 +288,40 @@ public class BoletoService {
                 .createdAt(boleto.getCreatedAt())
                 .updatedAt(boleto.getUpdatedAt())
                 .build();
+    }
+
+    /**
+     * Deleta um boleto e seu comprovante associado do Firebase Storage, se existir
+     * @param boletoId ID do boleto a ser deletado
+     * @param userEmail Email do usuário autenticado
+     */
+    public void deletarBoleto(Long boletoId, String userEmail) {
+        // Busca o usuário
+        UserEntity user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+
+        // Busca o boleto
+        BoletoEntity boleto = boletoRepository.findById(boletoId)
+                .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
+
+        // Verifica se o boleto pertence ao usuário
+        if (!boleto.getUser().getId().equals(user.getId())) {
+            throw new IllegalArgumentException("Boleto não pertence ao usuário");
+        }
+
+        // Remove o arquivo do Firebase Storage se existir
+        if (boleto.getComprovanteUrl() != null && !boleto.getComprovanteUrl().isEmpty()) {
+            try {
+                log.info("Removendo arquivo do Firebase Storage para o boleto ID: {}", boletoId);
+                firebaseService.deleteFile(boleto.getComprovanteUrl());
+            } catch (Exception e) {
+                log.error("Erro ao remover arquivo do Firebase Storage para o boleto ID: {}", boletoId, e);
+                // Não interrompe o fluxo, continua com a exclusão do boleto
+            }
+        }
+
+        // Remove o boleto do banco de dados
+        boletoRepository.delete(boleto);
+        log.info("Boleto ID: {} removido com sucesso", boletoId);
     }
 }

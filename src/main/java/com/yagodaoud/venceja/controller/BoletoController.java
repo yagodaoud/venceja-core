@@ -187,4 +187,25 @@ public class BoletoController {
             throw new RuntimeException("Erro ao marcar boleto como pago: " + e.getMessage(), e);
         }
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<ApiResponse<Void>> deleteBoleto(
+            @PathVariable Long id,
+            Authentication authentication) {
+        try {
+            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+
+            boletoService.deletarBoleto(id, userEmail);
+
+            ApiResponse<Void> response = ApiResponse.<Void>builder()
+                    .message("Boleto deletado com sucesso")
+                    .build();
+
+            return ResponseEntity.ok(response);
+
+        } catch (Exception e) {
+            log.error("Erro ao deletar boleto: {}", e.getMessage(), e);
+            throw new RuntimeException("Erro ao deletar boleto: " + e.getMessage(), e);
+        }
+    }
 }

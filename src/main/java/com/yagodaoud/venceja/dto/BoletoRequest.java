@@ -31,6 +31,4 @@ public class BoletoRequest {
     private String observacoes;
 
     private Long categoriaId;
-
-    private String imagemUrl;
 }
