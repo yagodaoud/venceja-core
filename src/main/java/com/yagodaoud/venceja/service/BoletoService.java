@@ -71,6 +71,7 @@ public class BoletoService {
                 .status(determineStatus(request.getVencimento()))
                 .observacoes(request.getObservacoes())
                 .categoria(categoria)
+                .comprovanteUrl(request.getImagemUrl())
                 .build();
 
         boleto = boletoRepository.save(boleto);
@@ -168,6 +169,8 @@ public class BoletoService {
 
             String imageUrl = firebaseService.uploadBoletoImage(fileBytes, fileName);
             log.info("Imagem do boleto salva: {}", imageUrl);
+
+            mergedRequest.setImagemUrl(imageUrl);
 
             BoletoResponse response = createBoleto(mergedRequest, userEmail);
 
