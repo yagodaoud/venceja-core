@@ -37,13 +37,15 @@ jwt:
   secret: ${JWT_SECRET:venceja-secret-key-change-in-production-min-256-bits}
   expiration: 86400000 # 24 hours
 
-# Google Cloud Vision e Firebase
+# Google Cloud Vision
 google:
   credentials:
     resource: ${GOOGLE_APPLICATION_CREDENTIALS:classpath:venceja-google.json}
 
-# Firebase Storage
+# Firebase
 firebase:
+  credentials:
+    resource: ${FIREBASE_APPLICATION_CREDENTIALS:classpath:venceja-firebase.json}
   storage:
     bucket: ${FIREBASE_BUCKET:}
     project-id: ${FIREBASE_PROJECT_ID:}

@@ -1,6 +1,7 @@
 package com.yagodaoud.venceja.service;
 
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
@@ -24,7 +25,7 @@ import java.util.concurrent.TimeUnit;
 @RequiredArgsConstructor
 public class FirebaseService {
 
-    private final GoogleCredentials googleCredentials;
+    private final GoogleCredentials firebaseCredentials;
 
     @Value("${firebase.storage.bucket:}")
     private String bucketName;
@@ -46,14 +47,14 @@ public class FirebaseService {
                 return;
             }
 
-            if (googleCredentials == null) {
+            if (firebaseCredentials == null) {
                 log.warn("Google Credentials não disponíveis");
                 return;
             }
 
             storage = StorageOptions.newBuilder()
                     .setProjectId(projectId)
-                    .setCredentials(googleCredentials)
+                    .setCredentials(firebaseCredentials)
                     .build()
                     .getService();
 
@@ -70,7 +71,6 @@ public class FirebaseService {
      */
     public String uploadFile(byte[] fileBytes, String fileName, String contentType) throws IOException {
         if (storage == null) {
-            log.warn("Storage não inicializado, retornando URL dummy");
             return "https://storage.googleapis.com/dummy-bucket/" + fileName;
         }
 
@@ -87,7 +87,7 @@ public class FirebaseService {
             // Gera URL assinada válida por 1 ano
             URL signedUrl = storage.signUrl(
                     blobInfo,
-                    365,
+                    7,
                     TimeUnit.DAYS,
                     Storage.SignUrlOption.withV4Signature());
 
