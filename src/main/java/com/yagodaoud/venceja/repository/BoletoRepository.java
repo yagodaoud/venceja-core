@@ -33,8 +33,7 @@ public interface BoletoRepository extends JpaRepository<BoletoEntity, Long> {
     @Query("SELECT b FROM BoletoEntity b WHERE b.user.id = :userId " +
             "AND (:status IS NULL OR b.status = :status) " +
             "AND (:dataInicio IS NULL OR b.vencimento >= :dataInicio) " +
-            "AND (:dataFim IS NULL OR b.vencimento <= :dataFim) " +
-            "ORDER BY b.vencimento ASC")
+            "AND (:dataFim IS NULL OR b.vencimento <= :dataFim)")
     Page<BoletoEntity> findByUserIdWithFilters(
             @Param("userId") Long userId,
             @Param("status") BoletoStatus status,
