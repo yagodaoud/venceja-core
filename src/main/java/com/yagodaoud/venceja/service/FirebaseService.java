@@ -135,6 +135,9 @@ public class FirebaseService {
                 objectName = objectName.substring(0, objectName.indexOf("?"));
             }
             
+            // Decode URL-encoded characters (e.g., %20 to space)
+            objectName = java.net.URLDecoder.decode(objectName, java.nio.charset.StandardCharsets.UTF_8);
+            
             log.info("Deletando arquivo do Firebase Storage: {}", objectName);
             boolean deleted = storage.delete(BlobId.of(bucketName, objectName));
             

@@ -295,6 +295,7 @@ public class BoletoService {
      * @param boletoId ID do boleto a ser deletado
      * @param userEmail Email do usuário autenticado
      */
+    @Transactional
     public void deletarBoleto(Long boletoId, String userEmail) {
         // Busca o usuário
         UserEntity user = userRepository.findByEmail(userEmail)
