@@ -1,5 +1,6 @@
 package com.yagodaoud.venceja.service;
 
+import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
@@ -9,17 +10,21 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.io.IOException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
 
 /**
  * Serviço para upload de arquivos no Firebase Storage
+ * Usa as mesmas credenciais do Google Cloud (Vision API)
  */
 @Slf4j
 @Service
 @RequiredArgsConstructor
 public class FirebaseService {
+
+    private final GoogleCredentials googleCredentials;
 
     @Value("${firebase.storage.bucket:}")
     private String bucketName;
@@ -29,27 +34,43 @@ public class FirebaseService {
 
     private Storage storage;
 
-    private Storage getStorage() {
-        if (storage == null) {
-            if (projectId != null && !projectId.isEmpty()) {
-                storage = StorageOptions.newBuilder()
-                        .setProjectId(projectId)
-                        .build()
-                        .getService();
-            } else {
-                log.warn("Firebase project-id não configurado, usando StorageOptions padrão");
-                storage = StorageOptions.getDefaultInstance().getService();
+    @PostConstruct
+    public void init() {
+        try {
+            log.info("Inicializando Firebase Storage...");
+            log.info("Bucket: {}", bucketName);
+            log.info("Project ID: {}", projectId);
+
+            if (bucketName == null || bucketName.isEmpty()) {
+                log.warn("Firebase bucket não configurado");
+                return;
             }
+
+            if (googleCredentials == null) {
+                log.warn("Google Credentials não disponíveis");
+                return;
+            }
+
+            storage = StorageOptions.newBuilder()
+                    .setProjectId(projectId)
+                    .setCredentials(googleCredentials)
+                    .build()
+                    .getService();
+
+            log.info("Firebase Storage inicializado com sucesso!");
+
+        } catch (Exception e) {
+            log.error("Erro ao inicializar Firebase Storage: {}", e.getMessage(), e);
+            log.warn("Firebase Storage não disponível. Uploads retornarão URLs dummy.");
         }
-        return storage;
     }
 
     /**
      * Faz upload de um arquivo e retorna URL assinada
      */
     public String uploadFile(byte[] fileBytes, String fileName, String contentType) throws IOException {
-        if (bucketName == null || bucketName.isEmpty()) {
-            log.warn("Firebase bucket não configurado, retornando URL dummy");
+        if (storage == null) {
+            log.warn("Storage não inicializado, retornando URL dummy");
             return "https://storage.googleapis.com/dummy-bucket/" + fileName;
         }
 
@@ -61,10 +82,10 @@ public class FirebaseService {
                     .setContentType(contentType)
                     .build();
 
-            getStorage().create(blobInfo, fileBytes);
+            storage.create(blobInfo, fileBytes);
 
             // Gera URL assinada válida por 1 ano
-            URL signedUrl = getStorage().signUrl(
+            URL signedUrl = storage.signUrl(
                     blobInfo,
                     365,
                     TimeUnit.DAYS,
@@ -75,7 +96,7 @@ public class FirebaseService {
 
         } catch (Exception e) {
             log.error("Erro ao fazer upload do arquivo: {}", e.getMessage(), e);
-            throw new IOException("Erro ao fazer upload do arquivo", e);
+            throw new IOException("Erro ao fazer upload do arquivo: " + e.getMessage(), e);
         }
     }
 

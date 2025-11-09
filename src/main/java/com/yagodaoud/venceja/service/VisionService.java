@@ -7,12 +7,13 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
+import javax.annotation.PostConstruct;
 import java.io.IOException;
-import java.io.InputStream;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -25,6 +26,10 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class VisionService {
 
+    private final GoogleCredentials googleCredentials;
+
+    private ImageAnnotatorClient visionClient;
+
     private static final Pattern VALOR_PATTERN = Pattern.compile(
             "R\\$?\\s*(\\d{1,3}(?:\\.\\d{3})*(?:,\\d{2})?)",
             Pattern.CASE_INSENSITIVE);
@@ -34,25 +39,27 @@ public class VisionService {
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-    /**
-     * Cria ImageAnnotatorClient com credenciais do arquivo JSON
-     */
-    private ImageAnnotatorClient createVisionClient() throws IOException {
-        try (InputStream is = getClass().getClassLoader()
-                .getResourceAsStream("venceja-google.json")) {
+    @PostConstruct
+    public void init() {
+        try {
+            log.info("Inicializando Google Vision Client...");
 
-            if (is == null) {
-                throw new IOException("Arquivo venceja-google.json não encontrado em resources");
+            if (googleCredentials == null) {
+                log.warn("Google Credentials não disponíveis");
+                return;
             }
 
-            GoogleCredentials credentials = GoogleCredentials.fromStream(is)
-                    .createScoped("https://www.googleapis.com/auth/cloud-platform");
-
             ImageAnnotatorSettings settings = ImageAnnotatorSettings.newBuilder()
-                    .setCredentialsProvider(() -> credentials)
+                    .setCredentialsProvider(() -> googleCredentials)
                     .build();
 
-            return ImageAnnotatorClient.create(settings);
+            visionClient = ImageAnnotatorClient.create(settings);
+
+            log.info("Google Vision Client inicializado com sucesso!");
+
+        } catch (Exception e) {
+            log.error("Erro ao inicializar Vision Client: {}", e.getMessage(), e);
+            log.warn("OCR não estará disponível");
         }
     }
 
@@ -60,22 +67,23 @@ public class VisionService {
      * Extrai texto do documento usando OCR
      */
     public String detectDocumentText(byte[] imageBytes) throws IOException {
-        try (ImageAnnotatorClient vision = createVisionClient()) {
+        if (visionClient == null) {
+            throw new IOException("Vision Client não inicializado. Verifique as credenciais do Google Cloud.");
+        }
+
+        try {
             ByteString imgBytes = ByteString.copyFrom(imageBytes);
             Image img = Image.newBuilder().setContent(imgBytes).build();
-            Feature feat = Feature.newBuilder()
-                    .setType(Feature.Type.DOCUMENT_TEXT_DETECTION)
-                    .build();
-
+            Feature feat = Feature.newBuilder().setType(Feature.Type.DOCUMENT_TEXT_DETECTION).build();
             AnnotateImageRequest request = AnnotateImageRequest.newBuilder()
                     .addFeatures(feat)
                     .setImage(img)
                     .build();
 
-            BatchAnnotateImagesResponse response = vision.batchAnnotateImages(
-                    List.of(request)
-            );
+            List<AnnotateImageRequest> requests = new ArrayList<>();
+            requests.add(request);
 
+            BatchAnnotateImagesResponse response = visionClient.batchAnnotateImages(requests);
             List<AnnotateImageResponse> responses = response.getResponsesList();
 
             if (responses.isEmpty() || !responses.get(0).hasFullTextAnnotation()) {
@@ -86,6 +94,7 @@ public class VisionService {
             String text = responses.get(0).getFullTextAnnotation().getText();
             log.info("OCR extraiu {} caracteres do documento", text.length());
             return text;
+
         } catch (Exception e) {
             log.error("Erro ao executar OCR: {}", e.getMessage(), e);
             throw new IOException("Falha ao processar OCR: " + e.getMessage(), e);
