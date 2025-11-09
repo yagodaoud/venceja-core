@@ -39,8 +39,8 @@ jwt:
 
 # Google Cloud Vision
 google:
-  vision:
-    api-key: ${GOOGLE_VISION_KEY:}
+  application:
+    credentials: ${GOOGLE_APPLICATION_CREDENTIALS:classpath:venceja-google.json}
 
 # Firebase Storage
 firebase:
@@ -76,6 +76,7 @@ logging:
 # Dev Profile (H2)
 spring:
   config:
+    import: optional:file:.env[.properties]
     activate:
       on-profile: dev
   datasource:
@@ -94,6 +95,7 @@ spring:
 # Prod Profile (PostgreSQL)
 spring:
   config:
+    import: optional:file:.env[.properties]
     activate:
       on-profile: prod
   datasource:
