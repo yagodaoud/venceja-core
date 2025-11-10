@@ -26,7 +26,7 @@ public class GoogleCredentialsConfig {
     @Value("${google.credentials.json:}")
     private String credentialsJson;
 
-    @Value("${google.credentials.resource:venceja-google.json}")
+    @Value("${google.credentials.resource:}")
     private String credentialsResource;
 
     /**

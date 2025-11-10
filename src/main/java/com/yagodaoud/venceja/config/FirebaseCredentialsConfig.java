@@ -25,7 +25,7 @@ public class FirebaseCredentialsConfig {
     @Value("${firebase.credentials.json:}")
     private String credentialsJson;
 
-    @Value("${firebase.credentials.resource:venceja-firebase.json}")
+    @Value("${firebase.credentials.resource:}")
     private String credentialsResource;
 
     /**
