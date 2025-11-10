@@ -2,6 +2,8 @@
 # Configuração Principal - VenceJa Core
 # ===================================================================
 spring:
+  applications:
+    web-app-url: ${WEB_APP_URL}
   config:
     import: optional:file:.env[.properties]
   application:
