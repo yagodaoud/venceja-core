@@ -121,10 +121,10 @@ management:
 logging:
   level:
     root: ${LOG_LEVEL_ROOT:INFO}
-    com.yagodaoud.venceja: ${LOG_LEVEL_APP:INFO}
-    org.springframework.web: ${LOG_LEVEL_SPRING_WEB:INFO}
-    org.springframework.security: ${LOG_LEVEL_SECURITY:INFO}
-    org.hibernate.SQL: ${LOG_LEVEL_SQL:WARN}
+    com.yagodaoud.venceja: DEBUG
+    org.springframework.web: DEBUG
+    org.springframework.security: DEBUG
+    org.hibernate.SQL: DEBUG
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss} [%thread] %-5level %logger{36} - %msg%n"
 
