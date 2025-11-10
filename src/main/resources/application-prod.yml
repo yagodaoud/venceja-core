@@ -17,6 +17,20 @@ spring:
     enabled: true
     baseline-on-migrate: true
 
+# Google Cloud
+google:
+  credentials:
+    resource: ${GOOGLE_APPLICATION_CREDENTIALS_JSON}
+
+# Firebase
+firebase:
+  credentials:
+    resource: ${FIREBASE_APPLICATION_CREDENTIALS_JSON}
+  storage:
+    bucket: ${FIREBASE_BUCKET}
+    project-id: ${FIREBASE_PROJECT_ID}
+
+
 # Logging em produção
 logging:
   level:
