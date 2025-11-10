@@ -80,13 +80,12 @@ public class SecurityConfig {
     @Bean
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
-        configuration.setAllowedOriginPatterns(Arrays.asList("*"));
-//        configuration.setAllowedOrigins(Arrays.asList(
-//                "http://localhost:19006", // Expo dev
-//                "http://localhost:8082", // Vite
-//                webAppUrl,
-//                "http://localhost:3000" // React dev
-//        ));
+        configuration.setAllowedOrigins(Arrays.asList(
+                "http://localhost:19006", // Expo dev
+                "http://localhost:8082", // Vite
+                webAppUrl,
+                "http://localhost:3000" // React dev
+        ));
         configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("*"));
         configuration.setAllowCredentials(true);
