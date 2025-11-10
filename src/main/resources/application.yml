@@ -201,6 +201,9 @@ spring:
     console:
       enabled: false
 
+  main:
+    lazy-initialization: true
+
 # Logging otimizado para produção
 logging:
   level:
