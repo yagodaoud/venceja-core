@@ -5,6 +5,7 @@ import com.yagodaoud.venceja.dto.LoginRequest;
 import com.yagodaoud.venceja.service.AuthService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -14,6 +15,7 @@ import java.util.Map;
 /**
  * Controller para autenticação
  */
+@Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
 @RequiredArgsConstructor
@@ -23,6 +25,8 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<ApiResponse<Map<String, Object>>> login(@Valid @RequestBody LoginRequest request) {
+        log.info("Attempting login for user: {}", request.getEmail());
+
         Map<String, Object> data = authService.login(request);
 
         ApiResponse<Map<String, Object>> response = ApiResponse.<Map<String, Object>>builder()
