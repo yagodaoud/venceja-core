@@ -62,7 +62,10 @@ spring:
 # ===================================================================
 jwt:
   secret: ${JWT_SECRET}
-  expiration: ${JWT_EXPIRATION:86400000} # 24 hours
+  expiration: ${JWT_EXPIRATION:86400000} # 24 hours in milliseconds
+  refresh-token:
+    expiration: ${JWT_REFRESH_EXPIRATION:2592000000} # 30 days in milliseconds
+    max-per-user: ${JWT_MAX_TOKENS_PER_USER:5} # Maximum active tokens per user
 
 # ===================================================================
 # Google Cloud Vision

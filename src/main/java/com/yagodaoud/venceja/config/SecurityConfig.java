@@ -26,7 +26,7 @@ import java.util.Arrays;
 import java.util.List;
 
 /**
- * Configuração de segurança do Spring Security
+ * Configuração de segurança do Spring Security com suporte a refresh tokens
  */
 @Configuration
 @EnableWebSecurity
@@ -46,7 +46,9 @@ public class SecurityConfig {
                 .csrf(AbstractHttpConfigurer::disable)
                 .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/v1/auth/**").permitAll()
+                        .requestMatchers("/api/v1/auth/login").permitAll()
+                        .requestMatchers("/api/v1/auth/refresh").permitAll() // Refresh endpoint público
+                        .requestMatchers("/api/v1/auth/logout").permitAll() // Logout pode ser público
                         .requestMatchers("/h2-console/**").permitAll()
                         .requestMatchers("/actuator/health").permitAll()
                         .anyRequest().authenticated())
