@@ -30,12 +30,32 @@ public class VisionService {
 
     private ImageAnnotatorClient visionClient;
 
-    private static final Pattern VALOR_PATTERN = Pattern.compile(
-            "R\\$?\\s*(\\d{1,3}(?:\\.\\d{3})*(?:,\\d{2})?)",
-            Pattern.CASE_INSENSITIVE);
+    // Padrões para extração de valor
+    private static final Pattern VALOR_LABEL_PATTERN = Pattern.compile(
+            "(?:VALOR\\s+DO\\s+DOCUMENTO|VALOR\\s+DOCUMENTO|\\(=\\)\\s*VALOR\\s+DO\\s+DOCUMENTO)[:\\s]*R?\\$?\\s*(\\d{1,3}(?:[.,]\\d{3})*[.,]\\d{2})",
+            Pattern.CASE_INSENSITIVE
+    );
 
-    private static final Pattern VENCIMENTO_PATTERN = Pattern.compile(
-            "\\b(\\d{2}/\\d{2}/\\d{4})\\b");
+    private static final Pattern VALOR_GENERICO_PATTERN = Pattern.compile(
+            "R\\$?\\s*(\\d{1,3}(?:[.,]\\d{3})*[.,]\\d{2})",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    // Padrões para extração de vencimento (aceita /, . ou -)
+    private static final Pattern VENCIMENTO_LABEL_PATTERN = Pattern.compile(
+            "VENCIMENTO[:\\s]*(\\d{2}[/.\\-]\\d{2}[/.\\-]\\d{4})",
+            Pattern.CASE_INSENSITIVE
+    );
+
+    private static final Pattern DATA_PATTERN = Pattern.compile(
+            "\\b(\\d{2}[/.\\-]\\d{2}[/.\\-]\\d{4})\\b"
+    );
+
+    // Padrão para extração de fornecedor (mais flexível)
+    private static final Pattern BENEFICIARIO_PATTERN = Pattern.compile(
+            "BENEFICI[AÁ]RIO[:\\s]*\\n\\s*([^\\n]{5,100})",
+            Pattern.CASE_INSENSITIVE
+    );
 
     private static final DateTimeFormatter DATE_FORMATTER = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
@@ -102,86 +122,300 @@ public class VisionService {
     }
 
     /**
-     * Extrai valor do texto OCR
+     * Extrai valor do texto OCR com múltiplas estratégias
      */
     public BigDecimal extractValor(String ocrText) {
         if (ocrText == null || ocrText.isEmpty()) {
             return null;
         }
 
-        Matcher matcher = VALOR_PATTERN.matcher(ocrText);
-        if (matcher.find()) {
-            String valorStr = matcher.group(1).replace(".", "").replace(",", ".");
-            try {
-                return new BigDecimal(valorStr);
-            } catch (NumberFormatException e) {
-                log.warn("Erro ao converter valor: {}", valorStr);
+        // Estratégia 1: Procura por "VALOR DO DOCUMENTO" seguido do valor
+        Matcher labelMatcher = VALOR_LABEL_PATTERN.matcher(ocrText);
+        if (labelMatcher.find()) {
+            String valorStr = labelMatcher.group(1);
+            BigDecimal valor = parseValor(valorStr);
+            if (valor != null && isValorValido(valor)) {
+                log.info("Valor encontrado via label 'VALOR DO DOCUMENTO': R$ {}", valor);
+                return valor;
             }
         }
 
+        // Estratégia 2: Procura todos os valores R$ e escolhe o mais provável
+        List<BigDecimal> valoresEncontrados = new ArrayList<>();
+        Matcher genericMatcher = VALOR_GENERICO_PATTERN.matcher(ocrText);
+
+        while (genericMatcher.find()) {
+            String valorStr = genericMatcher.group(1);
+            BigDecimal valor = parseValor(valorStr);
+            if (valor != null && isValorValido(valor)) {
+                valoresEncontrados.add(valor);
+            }
+        }
+
+        // Se encontrou valores, retorna o primeiro valor válido (normalmente é o principal)
+        if (!valoresEncontrados.isEmpty()) {
+            // Filtra valores muito pequenos (provavelmente taxas) e muito grandes (provavelmente erros)
+            BigDecimal valorSelecionado = valoresEncontrados.stream()
+                    .filter(v -> v.compareTo(new BigDecimal("10.00")) >= 0) // Mínimo R$ 10
+                    .filter(v -> v.compareTo(new BigDecimal("100000.00")) <= 0) // Máximo R$ 100.000
+                    .findFirst()
+                    .orElse(valoresEncontrados.get(0));
+
+            log.info("Valor encontrado via busca genérica: R$ {}", valorSelecionado);
+            return valorSelecionado;
+        }
+
+        log.warn("Nenhum valor válido encontrado no OCR");
         return null;
     }
 
     /**
-     * Extrai data de vencimento do texto OCR
+     * Converte string de valor para BigDecimal
+     */
+    private BigDecimal parseValor(String valorStr) {
+        if (valorStr == null || valorStr.isEmpty()) {
+            return null;
+        }
+
+        try {
+            // Normaliza: remove pontos de milhar e troca vírgula por ponto
+            String normalized = valorStr
+                    .replaceAll("\\.", "")  // Remove pontos de milhar
+                    .replace(",", ".");     // Troca vírgula decimal por ponto
+
+            return new BigDecimal(normalized);
+        } catch (NumberFormatException e) {
+            log.debug("Erro ao converter valor: {}", valorStr);
+            return null;
+        }
+    }
+
+    /**
+     * Valida se o valor está em um range aceitável
+     */
+    private boolean isValorValido(BigDecimal valor) {
+        return valor != null &&
+                valor.compareTo(BigDecimal.ZERO) > 0 &&
+                valor.compareTo(new BigDecimal("1000000.00")) < 0;
+    }
+
+    /**
+     * Extrai data de vencimento do texto OCR com múltiplas estratégias
      */
     public LocalDate extractVencimento(String ocrText) {
         if (ocrText == null || ocrText.isEmpty()) {
             return null;
         }
 
-        Matcher matcher = VENCIMENTO_PATTERN.matcher(ocrText);
-        while (matcher.find()) {
-            String dateStr = matcher.group(1);
-            try {
-                LocalDate date = LocalDate.parse(dateStr, DATE_FORMATTER);
-                // Validação básica: data não muito antiga e não muito futura
-                if (date.isAfter(LocalDate.now().minusYears(1)) &&
-                        date.isBefore(LocalDate.now().plusYears(2))) {
-                    return date;
-                }
-            } catch (DateTimeParseException e) {
-                log.debug("Data inválida: {}", dateStr);
+        // Estratégia 1: Procura por "VENCIMENTO" seguido da data
+        Matcher labelMatcher = VENCIMENTO_LABEL_PATTERN.matcher(ocrText);
+        if (labelMatcher.find()) {
+            String dateStr = labelMatcher.group(1);
+            LocalDate date = parseData(dateStr);
+            if (date != null && isDataVencimentoValida(date)) {
+                log.info("Vencimento encontrado via label: {}", date);
+                return date;
             }
         }
 
+        // Estratégia 2: Procura todas as datas e escolhe a mais provável
+        List<LocalDate> datasEncontradas = new ArrayList<>();
+        Matcher dateMatcher = DATA_PATTERN.matcher(ocrText);
+
+        while (dateMatcher.find()) {
+            String dateStr = dateMatcher.group(1);
+            LocalDate date = parseData(dateStr);
+            if (date != null && isDataVencimentoValida(date)) {
+                datasEncontradas.add(date);
+            }
+        }
+
+        // Retorna a primeira data futura encontrada (provavelmente o vencimento)
+        LocalDate hoje = LocalDate.now();
+        LocalDate dataFutura = datasEncontradas.stream()
+                .filter(d -> d.isAfter(hoje.minusDays(1))) // Aceita hoje ou futuro
+                .findFirst()
+                .orElse(null);
+
+        if (dataFutura != null) {
+            log.info("Vencimento encontrado via busca genérica: {}", dataFutura);
+            return dataFutura;
+        }
+
+        // Se não encontrou data futura, pega a mais recente
+        if (!datasEncontradas.isEmpty()) {
+            LocalDate dataMaisRecente = datasEncontradas.stream()
+                    .max(LocalDate::compareTo)
+                    .orElse(null);
+            log.info("Vencimento encontrado (data mais recente): {}", dataMaisRecente);
+            return dataMaisRecente;
+        }
+
+        log.warn("Nenhuma data de vencimento válida encontrada no OCR");
         return null;
     }
 
     /**
-     * Extrai fornecedor do texto OCR (primeira linha ou palavras em maiúscula)
+     * Converte string de data para LocalDate, tentando múltiplos formatos
      */
-    public String extractFornecedor(String ocrText) {
-        if (ocrText == null || ocrText.isEmpty()) {
+    private LocalDate parseData(String dateStr) {
+        if (dateStr == null || dateStr.isEmpty()) {
             return null;
         }
 
-        String[] lines = ocrText.split("\\n");
-        if (lines.length > 0) {
-            String firstLine = lines[0].trim();
-            if (firstLine.length() > 3 && firstLine.length() < 100) {
-                return firstLine;
+        // Normaliza: detecta se tem ano com 2 dígitos e converte para 4
+        String normalized = dateStr;
+        if (dateStr.matches("\\d{2}[/.\\-]\\d{2}[/.\\-]\\d{2}$")) {
+            // Ano com 2 dígitos - assume 20XX
+            String[] parts = dateStr.split("[/.\\-]");
+            int ano = Integer.parseInt(parts[2]);
+            // Se ano < 50, assume 20XX, senão 19XX
+            int anoCompleto = ano < 50 ? 2000 + ano : 1900 + ano;
+            normalized = parts[0] + dateStr.charAt(2) + parts[1] + dateStr.charAt(2) + anoCompleto;
+        }
+
+        // Lista de formatos suportados
+        DateTimeFormatter[] formatters = {
+                DateTimeFormatter.ofPattern("dd/MM/yyyy"),
+                DateTimeFormatter.ofPattern("dd.MM.yyyy"),
+                DateTimeFormatter.ofPattern("dd-MM-yyyy")
+        };
+
+        // Tenta cada formato disponível
+        for (DateTimeFormatter formatter : formatters) {
+            try {
+                return LocalDate.parse(normalized, formatter);
+            } catch (DateTimeParseException e) {
+                // Tenta o próximo formato
             }
         }
 
-        // Tenta encontrar palavras em maiúscula
-        Pattern pattern = Pattern.compile("\\b[A-ZÁÉÍÓÚÇ][A-ZÁÉÍÓÚÇ\\s]{3,50}\\b");
-        Matcher matcher = pattern.matcher(ocrText);
-        if (matcher.find()) {
-            return matcher.group().trim();
+        log.debug("Erro ao converter data com todos os formatos: {} (normalizada: {})", dateStr, normalized);
+        return null;
+    }
+
+    /**
+     * Valida se a data de vencimento está em um range aceitável
+     */
+    private boolean isDataVencimentoValida(LocalDate date) {
+        if (date == null) {
+            return false;
         }
 
+        LocalDate hoje = LocalDate.now();
+        LocalDate limitePassado = hoje.minusYears(1);  // Até 1 ano no passado
+        LocalDate limiteFuturo = hoje.plusYears(2);    // Até 2 anos no futuro
+
+        return date.isAfter(limitePassado) && date.isBefore(limiteFuturo);
+    }
+
+    /**
+     * Extrai fornecedor/beneficiário do texto OCR com múltiplas estratégias
+     */
+    public String extractFornecedor(String ocrText) {
+        if (ocrText == null || ocrText.isEmpty()) {
+            return "Fornecedor não identificado";
+        }
+
+        // Estratégia 1: Procura por "BENEFICIÁRIO" seguido do nome
+        Matcher beneficiarioMatcher = BENEFICIARIO_PATTERN.matcher(ocrText);
+        if (beneficiarioMatcher.find()) {
+            String fornecedor = beneficiarioMatcher.group(1).trim();
+            fornecedor = cleanFornecedor(fornecedor);
+            if (isFornecedorValido(fornecedor)) {
+                log.info("Fornecedor encontrado via label 'BENEFICIÁRIO': {}", fornecedor);
+                return fornecedor;
+            }
+        }
+
+        // Estratégia 2: Primeira linha significativa
+        String[] lines = ocrText.split("\\n");
+        for (String line : lines) {
+            line = line.trim();
+
+            // Ignora linhas muito curtas, números, ou palavras-chave comuns
+            if (line.length() < 5 || line.length() > 100) continue;
+            if (line.matches(".*\\d{4,}.*")) continue; // Ignora linhas com muitos números
+            if (line.matches("(?i).*(RECIBO|PAGADOR|DOCUMENTO|LOCAL|VENCIMENTO|AGENCIA).*")) continue;
+
+            // Verifica se é um nome válido (começa com letra)
+            if (line.matches("[A-ZÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑa-záàâãéèêíïóôõöúçñ].*")) {
+                String fornecedor = cleanFornecedor(line);
+                if (isFornecedorValido(fornecedor)) {
+                    log.info("Fornecedor encontrado via primeira linha: {}", fornecedor);
+                    return fornecedor;
+                }
+            }
+        }
+
+        // Estratégia 3: Procura sequência de palavras em maiúscula
+        Pattern upperCasePattern = Pattern.compile("\\b[A-ZÁÉÍÓÚÇÑ][A-ZÁÉÍÓÚÇÑ\\s&.-]{10,80}\\b");
+        Matcher upperCaseMatcher = upperCasePattern.matcher(ocrText);
+
+        while (upperCaseMatcher.find()) {
+            String candidato = upperCaseMatcher.group().trim();
+            candidato = cleanFornecedor(candidato);
+
+            if (isFornecedorValido(candidato)) {
+                log.info("Fornecedor encontrado via maiúsculas: {}", candidato);
+                return candidato;
+            }
+        }
+
+        log.warn("Não foi possível identificar o fornecedor no OCR");
         return "Fornecedor não identificado";
     }
 
     /**
-     * Extrai código de barras do texto OCR
+     * Limpa e normaliza o nome do fornecedor
      */
+    private String cleanFornecedor(String fornecedor) {
+        if (fornecedor == null) {
+            return "";
+        }
+
+        return fornecedor
+                .trim()
+                .replaceAll("\\s+", " ")  // Remove espaços múltiplos
+                .replaceAll("^[-\\s.]+|[-\\s.]+$", ""); // Remove pontos/hífens no início/fim
+    }
+
+    /**
+     * Valida se o fornecedor extraído é aceitável
+     */
+    private boolean isFornecedorValido(String fornecedor) {
+        if (fornecedor == null || fornecedor.length() < 5) {
+            return false;
+        }
+
+        // Rejeita se for só números ou caracteres especiais
+        if (fornecedor.matches("^[\\d\\s.,-]+$")) {
+            return false;
+        }
+
+        // Rejeita palavras-chave conhecidas (com a lista atualizada)
+        String upper = fornecedor.toUpperCase();
+        String[] palavrasInvalidas = {
+                // Palavras do boleto que não são o fornecedor
+                "AUTENTICAÇÃO", "AUTENTICACAO", "RECIBO DO SACADO",
+
+                // Palavras de labels comuns
+                "BENEFICIARIO", "PAGADOR", "SACADO", "ENDERECO",
+                "LOCAL DE PAGAMENTO", "VENCIMENTO", "AGENCIA",
+                "CODIGO", "NUMERO", "DOCUMENTO", "DATA", "VALOR"
+        };
+
+        for (String palavra : palavrasInvalidas) {
+            if (upper.equals(palavra)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
     /**
      * Extrai código de barras ou linha digitável do texto OCR
-     * Suporta ambos os formatos:
-     * - Linha digitável: 47 dígitos com separadores (ex: 75691.31951 01017.799709...)
-     * - Código de barras: 44 ou 48 dígitos contínuos
      */
     public String extractCodigoBarras(String ocrText) {
         if (ocrText == null || ocrText.isEmpty()) {
@@ -192,15 +426,12 @@ public class VisionService {
         String cleanText = ocrText.replaceAll("\\r?\\n", " ");
 
         // 1. Tenta encontrar linha digitável (47 dígitos com separadores)
-        // Formato: XXXXX.XXXXX XXXXX.XXXXXX XXXXX.XXXXXX X XXXXXXXXXXXXXX
-        // Campos: 5.5 5.6 5.6 1 14
         Pattern linhaDigitavelPattern = Pattern.compile(
                 "\\b(\\d{5}\\.\\d{5})\\s+(\\d{5}\\.\\d{6})\\s+(\\d{5}\\.\\d{6})\\s+(\\d)\\s+(\\d{14})\\b"
         );
         Matcher linhaDigitavelMatcher = linhaDigitavelPattern.matcher(cleanText);
 
         if (linhaDigitavelMatcher.find()) {
-            // Concatena todos os grupos removendo os pontos
             String campo1 = linhaDigitavelMatcher.group(1).replace(".", "");
             String campo2 = linhaDigitavelMatcher.group(2).replace(".", "");
             String campo3 = linhaDigitavelMatcher.group(3).replace(".", "");
@@ -213,7 +444,6 @@ public class VisionService {
         }
 
         // 2. Tenta padrão mais flexível para linha digitável
-        // Aceita variações com ou sem pontos/espaços
         Pattern flexivelPattern = Pattern.compile(
                 "\\b(\\d{5})[.\\s]?(\\d{5})[\\s]+(\\d{5})[.\\s]?(\\d{6})[\\s]+(\\d{5})[.\\s]?(\\d{6})[\\s]+(\\d)[\\s]+(\\d{14})\\b"
         );
@@ -239,54 +469,7 @@ public class VisionService {
             return codigoBarras;
         }
 
-        // 4. Última tentativa: procura sequências de dígitos que pareçam ser linha digitável
-        // mas podem ter OCR com erros (pontos faltando, etc)
-        Pattern sequenciaPattern = Pattern.compile("\\b\\d{5,6}[.\\s]+\\d{5,6}[.\\s]+\\d{5,6}[.\\s]+\\d{5,6}[.\\s]+\\d{5,6}[.\\s]+\\d{5,6}[.\\s]+\\d[.\\s]+\\d{14}\\b");
-        Matcher sequenciaMatcher = sequenciaPattern.matcher(cleanText);
-
-        if (sequenciaMatcher.find()) {
-            String sequencia = sequenciaMatcher.group().replaceAll("[.\\s]", "");
-            log.info("Sequência de dígitos encontrada: {}", sequencia);
-            return sequencia;
-        }
-
         log.warn("Nenhum código de barras ou linha digitável encontrado no texto OCR");
         return null;
-    }
-
-    /**
-     * Converte linha digitável (47 dígitos) para código de barras (44 dígitos)
-     * Útil se você precisar do formato de código de barras real
-     */
-    public String linhaDigitavelParaCodigoBarras(String linhaDigitavel) {
-        if (linhaDigitavel == null || linhaDigitavel.length() != 47) {
-            return null;
-        }
-
-        // Remove dígitos verificadores e reorganiza
-        // Formato linha digitável: AAABC.CCCCX DDDDD.DDDDDY EEEEE.EEEEEZ K UUUUUUUUUUUUUU
-        // Formato código barras:   AAABKUUUUUUUUUUUUUUCCCCCDDDDDDDDDEEEEEEEEEEE
-
-        try {
-            String campo1 = linhaDigitavel.substring(0, 4);  // AAAB (sem o 5º dígito que é verificador)
-            String campo2 = linhaDigitavel.substring(5, 9);  // Parte de CCCCC
-            String campo3 = linhaDigitavel.substring(10, 20); // DDDDD.DDDDD (sem último dígito verificador)
-            String campo4 = linhaDigitavel.substring(21, 31); // EEEEE.EEEEE (sem último dígito verificador)
-            String dv = linhaDigitavel.substring(32, 33);     // K (dígito verificador geral)
-            String campo5 = linhaDigitavel.substring(33);     // UUUUUUUUUUUUUU (fator de vencimento + valor)
-
-            // Reconstrói código de barras
-            String codigoBarras = campo1 + dv + campo5 +
-                    linhaDigitavel.substring(4, 5) + campo2 +
-                    linhaDigitavel.substring(10, 15) + linhaDigitavel.substring(16, 21) +
-                    linhaDigitavel.substring(21, 26) + linhaDigitavel.substring(27, 31);
-
-            log.info("Linha digitável convertida para código de barras: {}", codigoBarras);
-            return codigoBarras;
-
-        } catch (Exception e) {
-            log.error("Erro ao converter linha digitável para código de barras: {}", e.getMessage());
-            return null;
-        }
     }
 }
