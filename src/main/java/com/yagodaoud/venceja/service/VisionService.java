@@ -397,7 +397,7 @@ public class VisionService {
         String upper = fornecedor.toUpperCase();
         String[] palavrasInvalidas = {
                 // Palavras do boleto que não são o fornecedor
-                "AUTENTICAÇÃO", "AUTENTICACAO", "RECIBO DO SACADO",
+                "AUTENTICAÇÃO", "AUTENTICACAO", "AUTENTICAÇO", "RECIBO DO SACADO",
 
                 // Palavras de labels comuns
                 "BENEFICIARIO", "PAGADOR", "SACADO", "ENDERECO",
