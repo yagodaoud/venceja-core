@@ -22,14 +22,14 @@ public interface BoletoRepository extends JpaRepository<BoletoEntity, Long> {
         SELECT b FROM BoletoEntity b
         LEFT JOIN FETCH b.categoria
         WHERE b.user.id = :userId
-          AND (:status IS NULL OR b.status = :status)
+          AND (:statuses IS NULL OR b.status IN :statuses)
           AND (COALESCE(:dataInicio, b.vencimento) <= b.vencimento)
           AND (COALESCE(:dataFim, b.vencimento) >= b.vencimento)
         ORDER BY b.vencimento ASC
         """)
     Page<BoletoEntity> findByUserIdWithFilters(
             @Param("userId") Long userId,
-            @Param("status") BoletoStatus status,
+            @Param("statuses") List<BoletoStatus> statuses, // CHANGE: List parameter
             @Param("dataInicio") LocalDate dataInicio,
             @Param("dataFim") LocalDate dataFim,
             Pageable pageable);

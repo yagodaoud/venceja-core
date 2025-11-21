@@ -22,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
 /**
@@ -182,7 +183,7 @@ public class BoletoService {
     @Transactional(readOnly = true)
     public Page<BoletoResponse> listBoletos(
             String userEmail,
-            BoletoStatus status,
+            List<BoletoStatus> statuses,
             LocalDate dataInicio,
             LocalDate dataFim,
             Pageable pageable) {
@@ -191,8 +192,9 @@ public class BoletoService {
 
         updateOverdueBoletos(user.getId());
 
+        // CHANGE: Pass list to repository
         Page<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
-                user.getId(), status, dataInicio, dataFim, pageable);
+                user.getId(), statuses, dataInicio, dataFim, pageable);
 
         return boletos.map(this::toResponse);
     }

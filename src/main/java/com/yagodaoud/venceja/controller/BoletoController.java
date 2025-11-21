@@ -23,8 +23,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Controller para gerenciamento de boletos
@@ -103,12 +105,11 @@ public class BoletoController {
             @RequestParam(defaultValue = "10") int size,
             @RequestParam(defaultValue = "id") String sortBy,
             @RequestParam(defaultValue = "desc") String direction,
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String status, // Receives "PENDENTE,VENCIDO"
             @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataInicio,
             @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataFim,
             Authentication authentication) {
         String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
-
 
         Sort sort = direction.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() :
@@ -116,23 +117,27 @@ public class BoletoController {
 
         Pageable pageable = PageRequest.of(page, size, sort);
 
-        BoletoStatus statusEnum = null;
-        if (status != null && !status.isEmpty()) {
+        List<BoletoStatus> statusList = null;
+        if (status != null && !status.trim().isEmpty()) {
             try {
-                statusEnum = BoletoStatus.valueOf(status.toUpperCase());
+                statusList = Arrays.stream(status.split(","))
+                        .map(String::trim)
+                        .map(String::toUpperCase)
+                        .map(BoletoStatus::valueOf)
+                        .collect(Collectors.toList());
             } catch (IllegalArgumentException e) {
                 throw new IllegalArgumentException(
                         "Status inválido: " + status + ". Valores aceitos: PENDENTE, PAGO, VENCIDO");
             }
         }
 
-        // Validação de período
         if (dataInicio != null && dataFim != null && dataInicio.isAfter(dataFim)) {
             throw new IllegalArgumentException("Data inicial não pode ser posterior à data final");
         }
 
         Page<BoletoResponse> boletos = boletoService.listBoletos(
-                userEmail, statusEnum, dataInicio, dataFim, pageable);
+                userEmail, statusList, dataInicio, dataFim, pageable);
+
         List<BoletoResponse> boletosList = new ArrayList<>(boletos.getContent());
 
         ApiResponse.Meta meta = ApiResponse.Meta.builder()
