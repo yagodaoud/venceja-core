@@ -8,6 +8,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -80,6 +81,18 @@ public class VisionService {
         } catch (Exception e) {
             log.error("Erro ao inicializar Vision Client: {}", e.getMessage(), e);
             log.warn("OCR não estará disponível");
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        if (visionClient != null) {
+            try {
+                visionClient.close();
+                log.info("Vision Client fechado");
+            } catch (Exception e) {
+                log.error("Erro ao fechar Vision Client", e);
+            }
         }
     }
 

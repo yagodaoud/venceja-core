@@ -12,6 +12,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import javax.annotation.PostConstruct;
+import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
@@ -63,6 +64,18 @@ public class FirebaseService {
         } catch (Exception e) {
             log.error("Erro ao inicializar Firebase Storage: {}", e.getMessage(), e);
             log.warn("Firebase Storage não disponível. Uploads retornarão URLs dummy.");
+        }
+    }
+
+    @PreDestroy
+    public void cleanup() {
+        if (storage != null) {
+            try {
+                storage.close();
+                log.info("Vision Client fechado");
+            } catch (Exception e) {
+                log.error("Erro ao fechar Vision Client", e);
+            }
         }
     }
 

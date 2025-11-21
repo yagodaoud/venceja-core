@@ -189,17 +189,37 @@ spring:
     username: ${DB_USERNAME:}
     password: ${DB_PASSWORD:}
     hikari:
-      maximum-pool-size: 10
-      minimum-idle: 2
+      # REDUZIDO: 2-3 conexões são suficientes para baixo tráfego
+      maximum-pool-size: 3
+      minimum-idle: 1
+      # Fecha conexões idle rapidamente
+      idle-timeout: 300000  # 5 minutos
+      max-lifetime: 900000  # 15 minutos
+      connection-timeout: 20000
+      # Valida conexões antes de usar (evita erros)
+      validation-timeout: 3000
+      leak-detection-threshold: 60000
 
   jpa:
     hibernate:
       ddl-auto: validate
     show-sql: false
+    open-in-view: false  # IMPORTANTE: desabilita lazy loading em views
     properties:
       hibernate:
         dialect: org.hibernate.dialect.PostgreSQLDialect
-
+        # Desabilita features desnecessárias
+        jdbc:
+          batch_size: 10
+          fetch_size: 10
+        # Cache de segundo nível desabilitado (economiza RAM)
+        cache:
+          use_second_level_cache: false
+          use_query_cache: false
+        # Estatísticas desabilitadas
+        generate_statistics: false
+        order_inserts: true
+        order_updates: true
   h2:
     console:
       enabled: false
@@ -207,32 +227,59 @@ spring:
   main:
     lazy-initialization: true
 
-# Logging otimizado para produção
+# Logging mínimo
 logging:
   level:
-    root: INFO
+    root: WARN
     com.yagodaoud.venceja: INFO
-    org.springframework.web: INFO
-    org.springframework.security: WARN
-    org.hibernate.SQL: WARN
+    org.springframework: WARN
+    org.hibernate: WARN
   pattern:
-    console: "%d{yyyy-MM-dd HH:mm:ss} - %msg%n"
+    console: "%d{HH:mm:ss} - %msg%n"
 
-# Actuator mais aberto em prod (Railway tem health checks)
 management:
+  endpoints:
+    web:
+      exposure:
+        include: health
   endpoint:
     health:
-      show-details: always
+      show-details: never
 
 # Server otimizado
 server:
+  port: ${PORT:8080}
+  # Graceful shutdown economiza recursos
+  shutdown: graceful
   error:
     include-binding-errors: never
-  shutdown: graceful
+    include-message: always
+  # Compressão economiza banda mas usa CPU
+  compression:
+    enabled: true
+    min-response-size: 1024
   tomcat:
     threads:
-      max: 200
-      min-spare: 10
+      # REDUZIDO: 20 threads são suficientes para baixo tráfego
+      max: 20
+      min-spare: 2
+    # Limita conexões simultâneas
+    max-connections: 50
+    accept-count: 10
+    # Timeout agressivo fecha conexões idle
+    connection-timeout: 20000
+    keep-alive-timeout: 30000
+    max-keep-alive-requests: 50
+
+rate-limit:
+  requests-per-minute: 60
+
+jwt:
+  secret: ${JWT_SECRET}
+  expiration: 86400000
+  refresh-token:
+    expiration: 2592000000
+    max-per-user: 3
 
 # ===================================================================
 # Profile: LOCAL-POSTGRES (Testes locais com PostgreSQL)

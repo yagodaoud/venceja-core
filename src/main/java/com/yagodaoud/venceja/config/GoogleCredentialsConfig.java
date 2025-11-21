@@ -44,6 +44,9 @@ public class GoogleCredentialsConfig {
                     "https://www.googleapis.com/auth/cloud-platform"
             );
 
+            // Força refresh para evitar tokens expirados ocupando memória
+            credentials.refresh();
+
             log.info("Google Cloud Credentials carregadas com sucesso!");
             return credentials;
 
