@@ -3,6 +3,7 @@ package com.yagodaoud.venceja.config;
 import com.google.auth.oauth2.GoogleCredentials;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
+import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
@@ -22,6 +23,18 @@ public class FirebaseCredentialsConfig {
 
     @ConfigProperty(name = "firebase.credentials.path")
     Optional<String> credentialsPath;
+
+    @ConfigProperty(name = "firebase.credentials.json")
+    Optional<String> credentialsJson;
+
+    @ConfigProperty(name = "firebase.credentials.resource", defaultValue = "venceja-firebase.json")
+    String credentialsResource;
+
+    @Produces
+    @Named("firebase")
+    public GoogleCredentials firebaseCredentials() {
+        try {
+            GoogleCredentials credentials = loadCredentials();
 
             if (credentials != null) {
                 credentials = credentials.createScoped(

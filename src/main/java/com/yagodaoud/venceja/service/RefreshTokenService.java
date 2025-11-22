@@ -57,7 +57,7 @@ public class RefreshTokenService {
 
             if (oldestToken != null) {
                 oldestToken.setRevoked(true);
-                refreshTokenRepository.save(oldestToken);
+                // Entity is managed, no need to save
                 log.info("Token antigo revogado para usuário: {}", userEmail);
             }
         }
@@ -71,7 +71,7 @@ public class RefreshTokenService {
                 .revoked(false)
                 .build();
 
-        refreshToken = refreshTokenRepository.save(refreshToken);
+        refreshTokenRepository.persist(refreshToken);
         log.info("Refresh token criado para usuário: {}", userEmail);
 
         return refreshToken;
@@ -107,7 +107,7 @@ public class RefreshTokenService {
                 .orElseThrow(() -> new IllegalArgumentException("Refresh token não encontrado"));
 
         refreshToken.setRevoked(true);
-        refreshTokenRepository.save(refreshToken);
+        // Entity is managed
         log.info("Refresh token revogado");
     }
 

@@ -1,29 +1,27 @@
-```java
 package com.yagodaoud.venceja.controller;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yagodaoud.venceja.dto.ApiResponse;
 import com.yagodaoud.venceja.dto.BoletoRequest;
 import com.yagodaoud.venceja.dto.BoletoResponse;
+import com.yagodaoud.venceja.dto.PagedResult;
 import com.yagodaoud.venceja.entity.BoletoStatus;
 import com.yagodaoud.venceja.service.BoletoService;
 import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
-import org.springframework.format.annotation.DateTimeFormat;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
-import org.springframework.web.multipart.MultipartFile;
+import org.jboss.resteasy.reactive.RestForm;
+import org.jboss.resteasy.reactive.multipart.FileUpload;
 
+import java.io.IOException;
+import java.nio.file.Files;
 import java.time.LocalDate;
-import java.util.ArrayList;
+import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -33,8 +31,9 @@ import java.util.stream.Collectors;
  * Controller para gerenciamento de boletos
  */
 @Slf4j
-@RestController
-@RequestMapping("/api/v1/boletos")
+@Path("/api/v1/boletos")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 @Authenticated
 public class BoletoController {
 
@@ -47,10 +46,12 @@ public class BoletoController {
     @Inject
     SecurityIdentity securityIdentity;
 
-    @PostMapping("/scan")
-    public ResponseEntity<ApiResponse<BoletoResponse>> scanBoleto(
-            @RequestPart("file") MultipartFile file,
-            @RequestPart(value = "data", required = false) String dataJson) {
+    @POST
+    @Path("/scan")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Response scanBoleto(
+            @RestForm("file") FileUpload file,
+            @RestForm("data") String dataJson) {
         try {
             String userEmail = securityIdentity.getPrincipal().getName();
 
@@ -67,9 +68,11 @@ public class BoletoController {
                 request = new BoletoRequest();
             }
 
+            byte[] fileBytes = Files.readAllBytes(file.uploadedFile());
+
             CompletableFuture<BoletoResponse> future = boletoService.scanBoleto(
-                    file.getBytes(),
-                    file.getOriginalFilename(),
+                    fileBytes,
+                    file.fileName(),
                     request,
                     userEmail
             );
@@ -80,7 +83,7 @@ public class BoletoController {
                     .message("Boleto processado com sucesso")
                     .build();
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(apiResponse);
+            return Response.status(Response.Status.CREATED).entity(apiResponse).build();
 
         } catch (Exception e) {
             log.error("Erro ao processar boleto: {}", e.getMessage(), e);
@@ -88,9 +91,9 @@ public class BoletoController {
         }
     }
 
-    @PostMapping
-    public ResponseEntity<ApiResponse<BoletoResponse>> createBoleto(
-            @Valid @RequestBody BoletoRequest request) {
+    @POST
+    public Response createBoleto(
+            @Valid BoletoRequest request) {
         try {
             String userEmail = securityIdentity.getPrincipal().getName();
 
@@ -101,7 +104,7 @@ public class BoletoController {
                     .message("Boleto criado com sucesso")
                     .build();
 
-            return ResponseEntity.status(HttpStatus.CREATED).body(apiResponse);
+            return Response.status(Response.Status.CREATED).entity(apiResponse).build();
 
         } catch (Exception e) {
             log.error("Erro ao criar boleto: {}", e.getMessage(), e);
@@ -109,23 +112,24 @@ public class BoletoController {
         }
     }
 
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<BoletoResponse>>> listBoletos(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "id") String sortBy,
-            @RequestParam(defaultValue = "desc") String direction,
-            @RequestParam(required = false) String status, // Receives "PENDENTE,VENCIDO"
-            @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataInicio,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataFim) {
+    @GET
+    public Response listBoletos(
+            @QueryParam("page") @DefaultValue("0") int page,
+            @QueryParam("size") @DefaultValue("10") int size,
+            @QueryParam("sortBy") @DefaultValue("id") String sortBy,
+            @QueryParam("direction") @DefaultValue("desc") String direction,
+            @QueryParam("status") String status, // Receives "PENDENTE,VENCIDO"
+            @QueryParam("dataInicio") String dataInicioStr,
+            @QueryParam("dataFim") String dataFimStr) {
         
         String userEmail = securityIdentity.getPrincipal().getName();
 
-        Sort sort = direction.equalsIgnoreCase("desc") ?
-                Sort.by(sortBy).descending() :
-                Sort.by(sortBy).ascending();
+        LocalDate dataInicio = null;
+        LocalDate dataFim = null;
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("dd/MM/yyyy");
 
-        Pageable pageable = PageRequest.of(page, size, sort);
+        if (dataInicioStr != null) dataInicio = LocalDate.parse(dataInicioStr, formatter);
+        if (dataFimStr != null) dataFim = LocalDate.parse(dataFimStr, formatter);
 
         List<BoletoStatus> statusList = null;
         if (status != null && !status.trim().isEmpty()) {
@@ -145,30 +149,29 @@ public class BoletoController {
             throw new IllegalArgumentException("Data inicial não pode ser posterior à data final");
         }
 
-        Page<BoletoResponse> boletos = boletoService.listBoletos(
-                userEmail, statusList, dataInicio, dataFim, pageable);
-
-        List<BoletoResponse> boletosList = new ArrayList<>(boletos.getContent());
+        PagedResult<BoletoResponse> result = boletoService.listBoletos(
+                userEmail, statusList, dataInicio, dataFim, page, size, sortBy, direction);
 
         ApiResponse.Meta meta = ApiResponse.Meta.builder()
-                .total(boletos.getTotalElements())
-                .page(page)
-                .size(size)
+                .total(result.getTotalElements())
+                .page(result.getPage())
+                .size(result.getSize())
                 .build();
 
         ApiResponse<List<BoletoResponse>> response = ApiResponse.<List<BoletoResponse>>builder()
-                .data(boletosList)
+                .data(result.getContent())
                 .message("Boletos listados com sucesso")
                 .meta(meta)
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<BoletoResponse>> updateBoleto(
-            @PathVariable Long id,
-            @Valid @RequestBody BoletoRequest request) {
+    @PUT
+    @Path("/{id}")
+    public Response updateBoleto(
+            @PathParam("id") Long id,
+            @Valid BoletoRequest request) {
         try {
             String userEmail = securityIdentity.getPrincipal().getName();
 
@@ -179,7 +182,7 @@ public class BoletoController {
                     .message("Boleto atualizado com sucesso")
                     .build();
 
-            return ResponseEntity.ok(apiResponse);
+            return Response.ok(apiResponse).build();
 
         } catch (Exception e) {
             log.error("Erro ao atualizar boleto: {}", e.getMessage(), e);
@@ -187,20 +190,22 @@ public class BoletoController {
         }
     }
 
-    @PutMapping("/{id}/pagar")
-    public ResponseEntity<ApiResponse<BoletoResponse>> pagarBoleto(
-            @PathVariable Long id,
-            @RequestPart(value = "comprovante", required = false) MultipartFile comprovante,
-            @RequestParam(value = "semComprovante", required = false, defaultValue = "false") Boolean semComprovante) {
+    @PUT
+    @Path("/{id}/pagar")
+    @Consumes(MediaType.MULTIPART_FORM_DATA)
+    public Response pagarBoleto(
+            @PathParam("id") Long id,
+            @RestForm("comprovante") FileUpload comprovante,
+            @RestForm("semComprovante") @DefaultValue("false") Boolean semComprovante) {
         try {
             String userEmail = securityIdentity.getPrincipal().getName();
 
             byte[] comprovanteBytes = null;
             String comprovanteName = null;
 
-            if (comprovante != null) {
-                comprovanteBytes = comprovante.getBytes();
-                comprovanteName = comprovante.getOriginalFilename();
+            if (comprovante != null && comprovante.uploadedFile() != null) {
+                comprovanteBytes = Files.readAllBytes(comprovante.uploadedFile());
+                comprovanteName = comprovante.fileName();
             }
 
             BoletoResponse response = boletoService.pagarBoleto(
@@ -211,7 +216,7 @@ public class BoletoController {
                     .message("Boleto marcado como pago")
                     .build();
 
-            return ResponseEntity.ok(apiResponse);
+            return Response.ok(apiResponse).build();
 
         } catch (Exception e) {
             log.error("Erro ao marcar boleto como pago: {}", e.getMessage(), e);
@@ -219,9 +224,10 @@ public class BoletoController {
         }
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteBoleto(
-            @PathVariable Long id) {
+    @DELETE
+    @Path("/{id}")
+    public Response deleteBoleto(
+            @PathParam("id") Long id) {
         try {
             String userEmail = securityIdentity.getPrincipal().getName();
 
@@ -231,7 +237,7 @@ public class BoletoController {
                     .message("Boleto deletado com sucesso")
                     .build();
 
-            return ResponseEntity.ok(response);
+            return Response.ok(response).build();
 
         } catch (Exception e) {
             log.error("Erro ao deletar boleto: {}", e.getMessage(), e);
@@ -239,4 +245,3 @@ public class BoletoController {
         }
     }
 }
-```

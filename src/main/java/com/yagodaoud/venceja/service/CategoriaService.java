@@ -1,7 +1,9 @@
+```java
 package com.yagodaoud.venceja.service;
 
 import com.yagodaoud.venceja.dto.CategoriaRequest;
 import com.yagodaoud.venceja.dto.CategoriaResponse;
+import com.yagodaoud.venceja.dto.PagedResult;
 import com.yagodaoud.venceja.entity.CategoriaEntity;
 import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.CategoriaRepository;
@@ -10,10 +12,10 @@ import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Serviço para gerenciamento de categorias
@@ -32,12 +34,18 @@ public class CategoriaService {
      * Lista categorias do usuário com paginação
      */
     @Transactional // readOnly not supported directly
-    public Page<CategoriaResponse> listCategorias(String userEmail, Pageable pageable) {
+    public PagedResult<CategoriaResponse> listCategorias(String userEmail, int page, int size) {
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        Page<CategoriaEntity> categorias = categoriaRepository.findByUserId(user.getId(), pageable);
-        return categorias.map(this::toResponse);
+        List<CategoriaEntity> categorias = categoriaRepository.findByUserId(user.getId(), page, size);
+        long total = categoriaRepository.countByUserId(user.getId());
+
+        List<CategoriaResponse> content = categorias.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+
+        return new PagedResult<>(content, total, page, size);
     }
 
     /**
@@ -55,7 +63,7 @@ public class CategoriaService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        categoria = categoriaRepository.save(categoria);
+        categoriaRepository.persist(categoria);
         log.info("Categoria criada: ID {}", categoria.getId());
 
         return toResponse(categoria);
@@ -81,7 +89,7 @@ public class CategoriaService {
         categoria.setCor(request.getCor());
         categoria.setUpdatedAt(LocalDateTime.now());
 
-        categoria = categoriaRepository.save(categoria);
+        // Entity is managed, changes are automatically flushed on commit
         log.info("Categoria atualizada: ID {}", categoria.getId());
 
         return toResponse(categoria);
@@ -118,3 +126,4 @@ public class CategoriaService {
                 .build();
     }
 }
+```

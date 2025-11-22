@@ -4,6 +4,7 @@ package com.yagodaoud.venceja.service;
 import com.yagodaoud.venceja.dto.BoletoRequest;
 import com.yagodaoud.venceja.dto.BoletoResponse;
 import com.yagodaoud.venceja.dto.CategoriaResponse;
+import com.yagodaoud.venceja.dto.PagedResult;
 import com.yagodaoud.venceja.entity.BoletoEntity;
 import com.yagodaoud.venceja.entity.BoletoStatus;
 import com.yagodaoud.venceja.entity.CategoriaEntity;
@@ -16,13 +17,12 @@ import jakarta.inject.Inject;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.stream.Collectors;
 
 /**
  * Serviço para gerenciamento de boletos
@@ -81,7 +81,7 @@ public class BoletoService {
                 .categoria(categoria)
                 .build();
 
-        boleto = boletoRepository.save(boleto);
+        boletoRepository.persist(boleto);
         log.info("Boleto criado manualmente: ID {}", boleto.getId());
 
         return toResponse(boleto);
@@ -121,7 +121,7 @@ public class BoletoService {
         boleto.setObservacoes(request.getObservacoes());
         boleto.setCategoria(categoria);
 
-        boleto = boletoRepository.save(boleto);
+        // Entity is managed
         log.info("Boleto atualizado: ID {}", boleto.getId());
 
         return toResponse(boleto);
@@ -180,34 +180,6 @@ public class BoletoService {
             log.error("Erro ao processar boleto: {}", e.getMessage(), e);
             return CompletableFuture.failedFuture(e);
         }
-    }
-
-    /**
-     * Lista boletos do usuário com paginação e filtros de período
-     */
-    @Transactional // readOnly not supported directly
-    public Page<BoletoResponse> listBoletos(
-            String userEmail,
-            List<BoletoStatus> statuses,
-            LocalDate dataInicio,
-            LocalDate dataFim,
-            Pageable pageable) {
-        UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
-
-        updateOverdueBoletos(user.getId());
-
-        // CHANGE: Pass list to repository
-        Page<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
-                user.getId(), statuses, dataInicio, dataFim, pageable);
-
-        return boletos.map(this::toResponse);
-    }
-
-    /**
-     * Marca boleto como pago
-     */
-    @Transactional
     public BoletoResponse pagarBoleto(
             Long boletoId,
             String userEmail,
@@ -235,8 +207,7 @@ public class BoletoService {
             boleto.setComprovanteUrl(null);
         }
 
-        boleto = boletoRepository.save(boleto);
-
+        // Entity is managed
         log.info("Boleto {} marcado como pago", boletoId);
 
         return toResponse(boleto);
@@ -251,7 +222,7 @@ public class BoletoService {
         overdueBoletos.forEach(boleto -> {
             if (boleto.getStatus() == BoletoStatus.PENDENTE) {
                 boleto.setStatus(BoletoStatus.VENCIDO);
-                boletoRepository.save(boleto);
+                // Entity is managed
             }
         });
     }

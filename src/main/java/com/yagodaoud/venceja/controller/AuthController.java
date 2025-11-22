@@ -8,9 +8,10 @@ import io.quarkus.security.Authenticated;
 import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.validation.Valid;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.http.ResponseEntity;
-import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 import java.util.Map;
@@ -20,8 +21,9 @@ import java.util.stream.Collectors;
  * Controller para autenticação com suporte a refresh tokens
  */
 @Slf4j
-@RestController
-@RequestMapping("/api/v1/auth")
+@Path("/api/v1/auth")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class AuthController {
 
     @Inject
@@ -36,11 +38,12 @@ public class AuthController {
     /**
      * Login endpoint - retorna access token e refresh token
      */
-    @PostMapping("/login")
-    public ResponseEntity<ApiResponse<Map<String, Object>>> login(
-            @Valid @RequestBody LoginRequest request,
-            @RequestHeader(value = "User-Agent", required = false) String userAgent,
-            @RequestHeader(value = "X-Device-Info", required = false) String deviceInfo) {
+    @POST
+    @Path("/login")
+    public Response login(
+            @Valid LoginRequest request,
+            @HeaderParam("User-Agent") String userAgent,
+            @HeaderParam("X-Device-Info") String deviceInfo) {
 
         log.info("Attempting login for user: {}", request.getEmail());
 
@@ -54,15 +57,16 @@ public class AuthController {
                 .message("Login realizado com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
     /**
      * Refresh token endpoint - gera novo access token
      */
-    @PostMapping("/refresh")
-    public ResponseEntity<ApiResponse<RefreshTokenResponse>> refreshToken(
-            @Valid @RequestBody RefreshTokenRequest request) {
+    @POST
+    @Path("/refresh")
+    public Response refreshToken(
+            @Valid RefreshTokenRequest request) {
 
         log.info("Refreshing access token");
 
@@ -73,15 +77,16 @@ public class AuthController {
                 .message("Token renovado com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
     /**
      * Logout endpoint - revoga o refresh token
      */
-    @PostMapping("/logout")
-    public ResponseEntity<ApiResponse<Void>> logout(
-            @RequestBody(required = false) Map<String, String> body) {
+    @POST
+    @Path("/logout")
+    public Response logout(
+            Map<String, String> body) {
 
         String refreshToken = body != null ? body.get("refreshToken") : null;
 
@@ -94,15 +99,16 @@ public class AuthController {
                 .message("Logout realizado com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
     /**
      * Logout de todos os dispositivos
      */
     @Authenticated
-    @PostMapping("/logout-all")
-    public ResponseEntity<ApiResponse<Void>> logoutAll() {
+    @POST
+    @Path("/logout-all")
+    public Response logoutAll() {
         String userEmail = securityIdentity.getPrincipal().getName();
 
         authService.logoutAllDevices(userEmail);
@@ -112,16 +118,17 @@ public class AuthController {
                 .message("Logout realizado em todos os dispositivos")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
     /**
      * Lista sessões ativas do usuário
      */
     @Authenticated
-    @GetMapping("/sessions")
-    public ResponseEntity<ApiResponse<List<ActiveSessionResponse>>> getActiveSessions(
-            @RequestParam(required = false) String currentToken) {
+    @GET
+    @Path("/sessions")
+    public Response getActiveSessions(
+            @QueryParam("currentToken") String currentToken) {
 
         String userEmail = securityIdentity.getPrincipal().getName();
 
@@ -142,16 +149,17 @@ public class AuthController {
                 .message("Sessões ativas recuperadas com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
     /**
      * Revoga uma sessão específica
      */
     @Authenticated
-    @DeleteMapping("/sessions/{sessionId}")
-    public ResponseEntity<ApiResponse<Void>> revokeSession(
-            @PathVariable Long sessionId) {
+    @DELETE
+    @Path("/sessions/{sessionId}")
+    public Response revokeSession(
+            @PathParam("sessionId") Long sessionId) {
 
         String userEmail = securityIdentity.getPrincipal().getName();
 
@@ -169,6 +177,6 @@ public class AuthController {
                 .message("Sessão revogada com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 }
