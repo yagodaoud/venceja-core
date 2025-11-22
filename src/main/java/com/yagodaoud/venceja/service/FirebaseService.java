@@ -1,38 +1,21 @@
 package com.yagodaoud.venceja.service;
 
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageOptions;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
-
-/**
- * Serviço para upload de arquivos no Firebase Storage
- * Usa as mesmas credenciais do Google Cloud (Vision API)
- */
-@Slf4j
-@Service
-@RequiredArgsConstructor
-public class FirebaseService {
-
-    private final GoogleCredentials firebaseCredentials;
-
-    @Value("${firebase.storage.bucket:}")
-    private String bucketName;
-
-    @Value("${firebase.storage.project-id:}")
-    private String projectId;
+    String projectId;
 
     private Storage storage;
 
@@ -69,12 +52,22 @@ public class FirebaseService {
 
     @PreDestroy
     public void cleanup() {
+        // Storage client doesn't always implement Closeable in a way that needs explicit closing for HTTP clients,
+        // but if it does:
         if (storage != null) {
             try {
-                storage.close();
-                log.info("Vision Client fechado");
+                // storage.close(); // Storage interface doesn't extend AutoCloseable in older versions, but let's check.
+                // Actually Google Cloud Storage client is usually stateless-ish or manages its own resources.
+                // The original code had storage.close(), so let's try to keep it if possible, or remove if not needed.
+                // Checking the original code: it caught exception.
+                // Storage interface extends Service<StorageOptions>.
+                // In newer libraries it might be AutoCloseable.
+                if (storage instanceof AutoCloseable) {
+                    ((AutoCloseable) storage).close();
+                }
+                log.info("Firebase Storage Client fechado");
             } catch (Exception e) {
-                log.error("Erro ao fechar Vision Client", e);
+                log.error("Erro ao fechar Firebase Storage Client", e);
             }
         }
     }

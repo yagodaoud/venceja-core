@@ -6,13 +6,12 @@ import com.yagodaoud.venceja.entity.CategoriaEntity;
 import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.CategoriaRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 
@@ -20,20 +19,22 @@ import java.time.LocalDateTime;
  * Serviço para gerenciamento de categorias
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class CategoriaService {
 
-    private final CategoriaRepository categoriaRepository;
-    private final UserRepository userRepository;
+    @Inject
+    CategoriaRepository categoriaRepository;
+
+    @Inject
+    UserRepository userRepository;
 
     /**
      * Lista categorias do usuário com paginação
      */
-    @Transactional(readOnly = true)
+    @Transactional // readOnly not supported directly
     public Page<CategoriaResponse> listCategorias(String userEmail, Pageable pageable) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         Page<CategoriaEntity> categorias = categoriaRepository.findByUserId(user.getId(), pageable);
         return categorias.map(this::toResponse);
@@ -45,7 +46,7 @@ public class CategoriaService {
     @Transactional
     public CategoriaResponse createCategoria(CategoriaRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         CategoriaEntity categoria = CategoriaEntity.builder()
                 .user(user)
@@ -66,7 +67,7 @@ public class CategoriaService {
     @Transactional
     public CategoriaResponse updateCategoria(Long id, CategoriaRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         CategoriaEntity categoria = categoriaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
@@ -92,7 +93,7 @@ public class CategoriaService {
     @Transactional
     public void deleteCategoria(Long id, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         CategoriaEntity categoria = categoriaRepository.findById(id)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));

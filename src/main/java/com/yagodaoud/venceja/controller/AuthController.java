@@ -4,12 +4,12 @@ import com.yagodaoud.venceja.dto.*;
 import com.yagodaoud.venceja.entity.RefreshTokenEntity;
 import com.yagodaoud.venceja.service.AuthService;
 import com.yagodaoud.venceja.service.RefreshTokenService;
+import io.quarkus.security.Authenticated;
+import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.inject.Inject;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
@@ -22,11 +22,16 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/auth")
-@RequiredArgsConstructor
 public class AuthController {
 
-    private final AuthService authService;
-    private final RefreshTokenService refreshTokenService;
+    @Inject
+    AuthService authService;
+
+    @Inject
+    RefreshTokenService refreshTokenService;
+
+    @Inject
+    SecurityIdentity securityIdentity;
 
     /**
      * Login endpoint - retorna access token e refresh token
@@ -95,9 +100,10 @@ public class AuthController {
     /**
      * Logout de todos os dispositivos
      */
+    @Authenticated
     @PostMapping("/logout-all")
-    public ResponseEntity<ApiResponse<Void>> logoutAll(Authentication authentication) {
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+    public ResponseEntity<ApiResponse<Void>> logoutAll() {
+        String userEmail = securityIdentity.getPrincipal().getName();
 
         authService.logoutAllDevices(userEmail);
         log.info("User logged out from all devices: {}", userEmail);
@@ -112,12 +118,12 @@ public class AuthController {
     /**
      * Lista sessões ativas do usuário
      */
+    @Authenticated
     @GetMapping("/sessions")
     public ResponseEntity<ApiResponse<List<ActiveSessionResponse>>> getActiveSessions(
-            Authentication authentication,
             @RequestParam(required = false) String currentToken) {
 
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+        String userEmail = securityIdentity.getPrincipal().getName();
 
         List<RefreshTokenEntity> tokens = refreshTokenService.getActiveTokens(userEmail);
 
@@ -142,13 +148,15 @@ public class AuthController {
     /**
      * Revoga uma sessão específica
      */
+    @Authenticated
     @DeleteMapping("/sessions/{sessionId}")
     public ResponseEntity<ApiResponse<Void>> revokeSession(
-            @PathVariable Long sessionId,
-            Authentication authentication) {
+            @PathVariable Long sessionId) {
 
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+        String userEmail = securityIdentity.getPrincipal().getName();
 
+        // Verify ownership? The service or repository should probably handle this,
+        // but here we filter by userEmail first.
         List<RefreshTokenEntity> tokens = refreshTokenService.getActiveTokens(userEmail);
         RefreshTokenEntity token = tokens.stream()
                 .filter(t -> t.getId().equals(sessionId))

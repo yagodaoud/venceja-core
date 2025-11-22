@@ -1,83 +1,38 @@
 package com.yagodaoud.venceja.config;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.security.Keys;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.stereotype.Service;
+import io.smallrye.jwt.build.Jwt;
+import jakarta.enterprise.context.ApplicationScoped;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.crypto.SecretKey;
-import java.nio.charset.StandardCharsets;
-import java.util.Date;
-import java.util.HashMap;
-import java.util.Map;
-import java.util.function.Function;
+import java.util.Arrays;
+import java.util.HashSet;
 
 /**
- * Serviço para geração e validação de JWT tokens
+ * Serviço para geração de JWT tokens usando SmallRye JWT
  */
-@Service
+@ApplicationScoped
 public class JwtService {
 
-    @Value("${jwt.secret}")
-    private String secret;
+    @ConfigProperty(name = "mp.jwt.verify.issuer", defaultValue = "https://venceja.com")
+    String issuer;
 
-    @Value("${jwt.expiration}")
-    private Long expiration;
+    @ConfigProperty(name = "jwt.expiration")
+    Long expiration;
 
-    private SecretKey getSigningKey() {
-        byte[] keyBytes = secret.getBytes(StandardCharsets.UTF_8);
-        return Keys.hmacShaKeyFor(keyBytes);
-    }
-
-    public String extractUsername(String token) {
-        return extractClaim(token, Claims::getSubject);
-    }
-
-    public Date extractExpiration(String token) {
-        return extractClaim(token, Claims::getExpiration);
-    }
-
-    public <T> T extractClaim(String token, Function<Claims, T> claimsResolver) {
-        final Claims claims = extractAllClaims(token);
-        return claimsResolver.apply(claims);
-    }
-
-    private Claims extractAllClaims(String token) {
-        return Jwts.parser()
-                .verifyWith(getSigningKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
-    }
-
-    private Boolean isTokenExpired(String token) {
-        return extractExpiration(token).before(new Date());
-    }
-
-    public String generateToken(UserDetails userDetails) {
-        Map<String, Object> claims = new HashMap<>();
-        return createToken(claims, userDetails.getUsername());
-    }
-
+    /**
+     * Gera um token JWT para o usuário.
+     * @param username O email do usuário (usado como upn e subject)
+     * @return O token JWT assinado
+     */
     public String generateToken(String username) {
-        Map<String, Object> claims = new HashMap<>();
-        return createToken(claims, username);
+        return Jwt.issuer(issuer)
+                .upn(username)
+                .subject(username)
+                .groups(new HashSet<>(Arrays.asList("User"))) // Adiciona role padrão "User"
+                .expiresIn(expiration / 1000) // expiration em ms, expiresIn espera segundos
+                .sign();
     }
 
-    private String createToken(Map<String, Object> claims, String subject) {
-        return Jwts.builder()
-                .claims(claims)
-                .subject(subject)
-                .issuedAt(new Date(System.currentTimeMillis()))
-                .expiration(new Date(System.currentTimeMillis() + expiration))
-                .signWith(getSigningKey())
-                .compact();
-    }
-
-    public Boolean validateToken(String token, UserDetails userDetails) {
-        final String username = extractUsername(token);
-        return (username.equals(userDetails.getUsername()) && !isTokenExpired(token));
-    }
+    // Validação é feita automaticamente pelo Quarkus SmallRye JWT
+    // Métodos de extração manuais não são mais necessários pois SecurityIdentity injeta o Principal
 }

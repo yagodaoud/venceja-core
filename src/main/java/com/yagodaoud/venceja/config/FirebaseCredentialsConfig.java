@@ -1,49 +1,34 @@
 package com.yagodaoud.venceja.config;
 
 import com.google.auth.oauth2.GoogleCredentials;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.enterprise.inject.Produces;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.ByteArrayInputStream;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.Optional;
 
 /**
  * Configuração centralizada de credenciais do Firebase
  */
 @Slf4j
-@Configuration
+@ApplicationScoped
 public class FirebaseCredentialsConfig {
 
-    @Value("${firebase.credentials.path:}")
-    private String credentialsPath;
+    @ConfigProperty(name = "firebase.credentials.path")
+    Optional<String> credentialsPath;
 
-    @Value("${firebase.credentials.json:}")
-    private String credentialsJson;
-
-    @Value("${firebase.credentials.resource:}")
-    private String credentialsResource;
-
-    /**
-     * Bean único de FirebaseCredentials compartilhado por todos os serviços
-     */
-    @Bean
-    public GoogleCredentials firebaseCredentials() {
-        try {
-            log.info("Inicializando Firebase Credentials...");
-
-            GoogleCredentials credentials = loadCredentials();
-
-            // Adiciona escopo necessário para todos os serviços
-            credentials = credentials.createScoped(
-                    "https://www.googleapis.com/auth/cloud-platform"
-            );
-
-            log.info("Firebase Credentials carregadas com sucesso!");
+            if (credentials != null) {
+                credentials = credentials.createScoped(
+                        "https://www.googleapis.com/auth/cloud-platform"
+                );
+                log.info("Firebase Credentials carregadas com sucesso!");
+            }
             return credentials;
 
         } catch (Exception e) {
@@ -55,32 +40,38 @@ public class FirebaseCredentialsConfig {
 
     private GoogleCredentials loadCredentials() throws IOException {
         // Opção 1: JSON inline (variável de ambiente - melhor para produção)
-        if (credentialsJson != null && !credentialsJson.isEmpty()) {
+        if (credentialsJson.isPresent() && !credentialsJson.get().isEmpty()) {
             log.info("Carregando credenciais do JSON inline (variável de ambiente)");
             ByteArrayInputStream stream = new ByteArrayInputStream(
-                    credentialsJson.getBytes(StandardCharsets.UTF_8)
+                    credentialsJson.get().getBytes(StandardCharsets.UTF_8)
             );
             return GoogleCredentials.fromStream(stream);
         }
 
         // Opção 2: Arquivo local (caminho absoluto ou relativo)
-        if (credentialsPath != null && !credentialsPath.isEmpty()) {
-            log.info("Carregando credenciais do arquivo: {}", credentialsPath);
-            try (FileInputStream stream = new FileInputStream(credentialsPath)) {
+        if (credentialsPath.isPresent() && !credentialsPath.get().isEmpty()) {
+            log.info("Carregando credenciais do arquivo: {}", credentialsPath.get());
+            try (FileInputStream stream = new FileInputStream(credentialsPath.get())) {
                 return GoogleCredentials.fromStream(stream);
             }
         }
 
         // Opção 3: Arquivo em resources (padrão para desenvolvimento)
         log.info("Carregando credenciais do resource: {}", credentialsResource);
-        try (InputStream stream = getClass().getClassLoader()
+        try (InputStream stream = Thread.currentThread().getContextClassLoader()
                 .getResourceAsStream(credentialsResource)) {
 
             if (stream == null) {
-                throw new IOException(
-                        "Arquivo " + credentialsResource + " não encontrado em resources. " +
-                                "Configure FIREBASE_CREDENTIALS_PATH ou FIREBASE_CREDENTIALS_JSON"
-                );
+                // Try class loader
+                try (InputStream stream2 = getClass().getClassLoader().getResourceAsStream(credentialsResource)) {
+                    if (stream2 == null) {
+                         throw new IOException(
+                                "Arquivo " + credentialsResource + " não encontrado em resources. " +
+                                        "Configure FIREBASE_CREDENTIALS_PATH ou FIREBASE_CREDENTIALS_JSON"
+                        );
+                    }
+                    return GoogleCredentials.fromStream(stream2);
+                }
             }
 
             return GoogleCredentials.fromStream(stream);

@@ -1,13 +1,16 @@
+```java
 package com.yagodaoud.venceja.controller;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yagodaoud.venceja.dto.ApiResponse;
 import com.yagodaoud.venceja.dto.BoletoRequest;
 import com.yagodaoud.venceja.dto.BoletoResponse;
 import com.yagodaoud.venceja.entity.BoletoStatus;
 import com.yagodaoud.venceja.service.BoletoService;
-import com.fasterxml.jackson.databind.ObjectMapper;
+import io.quarkus.security.Authenticated;
+import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.inject.Inject;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -16,8 +19,6 @@ import org.springframework.data.domain.Sort;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -34,19 +35,24 @@ import java.util.stream.Collectors;
 @Slf4j
 @RestController
 @RequestMapping("/api/v1/boletos")
-@RequiredArgsConstructor
+@Authenticated
 public class BoletoController {
 
-    private final BoletoService boletoService;
-    private final ObjectMapper objectMapper;
+    @Inject
+    BoletoService boletoService;
+
+    @Inject
+    ObjectMapper objectMapper;
+
+    @Inject
+    SecurityIdentity securityIdentity;
 
     @PostMapping("/scan")
     public ResponseEntity<ApiResponse<BoletoResponse>> scanBoleto(
             @RequestPart("file") MultipartFile file,
-            @RequestPart(value = "data", required = false) String dataJson,
-            Authentication authentication) {
+            @RequestPart(value = "data", required = false) String dataJson) {
         try {
-            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+            String userEmail = securityIdentity.getPrincipal().getName();
 
             BoletoRequest request = null;
             if (dataJson != null && !dataJson.isEmpty()) {
@@ -61,7 +67,12 @@ public class BoletoController {
                 request = new BoletoRequest();
             }
 
-            CompletableFuture<BoletoResponse> future = boletoService.scanBoleto(file, request, userEmail);
+            CompletableFuture<BoletoResponse> future = boletoService.scanBoleto(
+                    file.getBytes(),
+                    file.getOriginalFilename(),
+                    request,
+                    userEmail
+            );
             BoletoResponse response = future.get();
 
             ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
@@ -79,10 +90,9 @@ public class BoletoController {
 
     @PostMapping
     public ResponseEntity<ApiResponse<BoletoResponse>> createBoleto(
-            @Valid @RequestBody BoletoRequest request,
-            Authentication authentication) {
+            @Valid @RequestBody BoletoRequest request) {
         try {
-            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+            String userEmail = securityIdentity.getPrincipal().getName();
 
             BoletoResponse response = boletoService.createBoleto(request, userEmail);
 
@@ -107,9 +117,9 @@ public class BoletoController {
             @RequestParam(defaultValue = "desc") String direction,
             @RequestParam(required = false) String status, // Receives "PENDENTE,VENCIDO"
             @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataInicio,
-            @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataFim,
-            Authentication authentication) {
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+            @RequestParam(required = false) @DateTimeFormat(pattern = "dd/MM/yyyy") LocalDate dataFim) {
+        
+        String userEmail = securityIdentity.getPrincipal().getName();
 
         Sort sort = direction.equalsIgnoreCase("desc") ?
                 Sort.by(sortBy).descending() :
@@ -158,10 +168,9 @@ public class BoletoController {
     @PutMapping("/{id}")
     public ResponseEntity<ApiResponse<BoletoResponse>> updateBoleto(
             @PathVariable Long id,
-            @Valid @RequestBody BoletoRequest request,
-            Authentication authentication) {
+            @Valid @RequestBody BoletoRequest request) {
         try {
-            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+            String userEmail = securityIdentity.getPrincipal().getName();
 
             BoletoResponse response = boletoService.updateBoleto(id, request, userEmail);
 
@@ -182,12 +191,20 @@ public class BoletoController {
     public ResponseEntity<ApiResponse<BoletoResponse>> pagarBoleto(
             @PathVariable Long id,
             @RequestPart(value = "comprovante", required = false) MultipartFile comprovante,
-            @RequestParam(value = "semComprovante", required = false, defaultValue = "false") Boolean semComprovante,
-            Authentication authentication) {
+            @RequestParam(value = "semComprovante", required = false, defaultValue = "false") Boolean semComprovante) {
         try {
-            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+            String userEmail = securityIdentity.getPrincipal().getName();
 
-            BoletoResponse response = boletoService.pagarBoleto(id, userEmail, comprovante, semComprovante);
+            byte[] comprovanteBytes = null;
+            String comprovanteName = null;
+
+            if (comprovante != null) {
+                comprovanteBytes = comprovante.getBytes();
+                comprovanteName = comprovante.getOriginalFilename();
+            }
+
+            BoletoResponse response = boletoService.pagarBoleto(
+                    id, userEmail, comprovanteBytes, comprovanteName, semComprovante);
 
             ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
                     .data(response)
@@ -204,10 +221,9 @@ public class BoletoController {
 
     @DeleteMapping("/{id}")
     public ResponseEntity<ApiResponse<Void>> deleteBoleto(
-            @PathVariable Long id,
-            Authentication authentication) {
+            @PathVariable Long id) {
         try {
-            String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+            String userEmail = securityIdentity.getPrincipal().getName();
 
             boletoService.deletarBoleto(id, userEmail);
 
@@ -223,3 +239,4 @@ public class BoletoController {
         }
     }
 }
+```

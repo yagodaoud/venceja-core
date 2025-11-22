@@ -1,3 +1,4 @@
+```java
 package com.yagodaoud.venceja.service;
 
 import com.yagodaoud.venceja.dto.BoletoRequest;
@@ -10,15 +11,13 @@ import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.BoletoRepository;
 import com.yagodaoud.venceja.repository.CategoriaRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
+import org.eclipse.microprofile.faulttolerance.Asynchronous;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
 
 import java.io.IOException;
 import java.time.LocalDate;
@@ -29,15 +28,23 @@ import java.util.concurrent.CompletableFuture;
  * Serviço para gerenciamento de boletos
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class BoletoService {
 
-    private final BoletoRepository boletoRepository;
-    private final CategoriaRepository categoriaRepository;
-    private final UserRepository userRepository;
-    private final VisionService visionService;
-    private final FirebaseService firebaseService;
+    @Inject
+    BoletoRepository boletoRepository;
+
+    @Inject
+    CategoriaRepository categoriaRepository;
+
+    @Inject
+    UserRepository userRepository;
+
+    @Inject
+    VisionService visionService;
+
+    @Inject
+    FirebaseService firebaseService;
 
     /**
      * Cria um boleto manualmente (sem OCR)
@@ -45,7 +52,7 @@ public class BoletoService {
     @Transactional
     public BoletoResponse createBoleto(BoletoRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         if (request.getValor() == null || request.getVencimento() == null ||
                 request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
@@ -86,7 +93,7 @@ public class BoletoService {
     @Transactional
     public BoletoResponse updateBoleto(long id, BoletoRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         if (request.getValor() == null || request.getVencimento() == null ||
                 request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
@@ -123,17 +130,15 @@ public class BoletoService {
     /**
      * Processa upload de boleto com OCR assíncrono
      */
-    @Async("taskExecutor")
+    @Asynchronous
     public CompletableFuture<BoletoResponse> scanBoleto(
-            MultipartFile file,
+            byte[] fileBytes,
+            String fileName,
             BoletoRequest request,
             String userEmail) {
         try {
             UserEntity user = userRepository.findByEmail(userEmail)
-                    .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
-
-            byte[] fileBytes = file.getBytes();
-            String fileName = file.getOriginalFilename();
+                    .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
             String ocrText = visionService.detectDocumentText(fileBytes);
             log.info("OCR concluído, texto extraído: {} caracteres", ocrText != null ? ocrText.length() : 0);
@@ -180,7 +185,7 @@ public class BoletoService {
     /**
      * Lista boletos do usuário com paginação e filtros de período
      */
-    @Transactional(readOnly = true)
+    @Transactional // readOnly not supported directly
     public Page<BoletoResponse> listBoletos(
             String userEmail,
             List<BoletoStatus> statuses,
@@ -188,7 +193,7 @@ public class BoletoService {
             LocalDate dataFim,
             Pageable pageable) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         updateOverdueBoletos(user.getId());
 
@@ -206,10 +211,11 @@ public class BoletoService {
     public BoletoResponse pagarBoleto(
             Long boletoId,
             String userEmail,
-            MultipartFile comprovante,
+            byte[] comprovanteBytes,
+            String comprovanteName,
             Boolean semComprovante) throws IOException {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         BoletoEntity boleto = boletoRepository.findById(boletoId)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
@@ -220,10 +226,8 @@ public class BoletoService {
 
         boleto.setStatus(BoletoStatus.PAGO);
 
-        if (comprovante != null && !comprovante.isEmpty()) {
-            byte[] fileBytes = comprovante.getBytes();
-            String fileName = comprovante.getOriginalFilename();
-            String comprovanteUrl = firebaseService.uploadComprovante(fileBytes, fileName);
+        if (comprovanteBytes != null && comprovanteBytes.length > 0) {
+            String comprovanteUrl = firebaseService.uploadComprovante(comprovanteBytes, comprovanteName);
             boleto.setComprovanteUrl(comprovanteUrl);
             boleto.setSemComprovante(false);
         } else if (Boolean.TRUE.equals(semComprovante)) {
@@ -301,7 +305,7 @@ public class BoletoService {
     public void deletarBoleto(Long boletoId, String userEmail) {
         // Busca o usuário
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         // Busca o boleto
         BoletoEntity boleto = boletoRepository.findById(boletoId)
@@ -328,3 +332,4 @@ public class BoletoService {
         log.info("Boleto ID: {} removido com sucesso", boletoId);
     }
 }
+```
