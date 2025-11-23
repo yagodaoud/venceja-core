@@ -25,28 +25,41 @@ public class BoletoRepository implements PanacheRepository<BoletoEntity> {
             int pageSize,
             String sortBy,
             String direction) {
-        
+
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
-        params.put("statuses", (statuses == null || statuses.isEmpty()) ? null : statuses);
-        params.put("dataInicio", dataInicio);
-        params.put("dataFim", dataFim);
 
-        io.quarkus.panache.common.Sort sort = io.quarkus.panache.common.Sort.by(sortBy);
+        StringBuilder query = new StringBuilder("""
+        SELECT b FROM BoletoEntity b
+        LEFT JOIN FETCH b.categoria
+        WHERE b.user.id = :userId
+    """);
+
+        if (statuses != null && !statuses.isEmpty()) {
+            query.append(" AND b.status IN :statuses");
+            params.put("statuses", statuses);
+        }
+
+        if (dataInicio != null) {
+            query.append(" AND b.vencimento >= :dataInicio");
+            params.put("dataInicio", dataInicio);
+        }
+
+        if (dataFim != null) {
+            query.append(" AND b.vencimento <= :dataFim");
+            params.put("dataFim", dataFim);
+        }
+
+        io.quarkus.panache.common.Sort sort = io.quarkus.panache.common.Sort.by("b." + sortBy);
         if ("desc".equalsIgnoreCase(direction)) {
             sort.descending();
         } else {
             sort.ascending();
         }
 
-        return find("""
-            SELECT b FROM BoletoEntity b
-            LEFT JOIN FETCH b.categoria
-            WHERE b.user.id = :userId
-              AND (:statuses IS NULL OR b.status IN :statuses)
-              AND (:dataInicio IS NULL OR :dataInicio <= b.vencimento)
-              AND (:dataFim IS NULL OR :dataFim >= b.vencimento)
-            """, sort, params).page(pageIndex, pageSize).list();
+        return find(query.toString(), sort, params)
+                .page(pageIndex, pageSize)
+                .list();
     }
 
     public long countByUserIdWithFilters(
@@ -54,20 +67,28 @@ public class BoletoRepository implements PanacheRepository<BoletoEntity> {
             List<BoletoStatus> statuses,
             LocalDate dataInicio,
             LocalDate dataFim) {
-        
+
         Map<String, Object> params = new HashMap<>();
         params.put("userId", userId);
-        params.put("statuses", (statuses == null || statuses.isEmpty()) ? null : statuses);
-        params.put("dataInicio", dataInicio);
-        params.put("dataFim", dataFim);
 
-        return count("""
-            FROM BoletoEntity b
-            WHERE b.user.id = :userId
-              AND (:statuses IS NULL OR b.status IN :statuses)
-              AND (:dataInicio IS NULL OR :dataInicio <= b.vencimento)
-              AND (:dataFim IS NULL OR :dataFim >= b.vencimento)
-            """, params);
+        StringBuilder query = new StringBuilder("FROM BoletoEntity b WHERE b.user.id = :userId");
+
+        if (statuses != null && !statuses.isEmpty()) {
+            query.append(" AND b.status IN :statuses");
+            params.put("statuses", statuses);
+        }
+
+        if (dataInicio != null) {
+            query.append(" AND b.vencimento >= :dataInicio");
+            params.put("dataInicio", dataInicio);
+        }
+
+        if (dataFim != null) {
+            query.append(" AND b.vencimento <= :dataFim");
+            params.put("dataFim", dataFim);
+        }
+
+        return count(query.toString(), params);
     }
 
     public List<BoletoEntity> findOverdueBoletosByUserId(Long userId) {
