@@ -1,17 +1,22 @@
 package com.yagodaoud.venceja.repository;
 
 import com.yagodaoud.venceja.entity.UserEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import jakarta.enterprise.context.ApplicationScoped;
 
 import java.util.Optional;
 
 /**
  * Repositório para usuários
  */
-@Repository
-public interface UserRepository extends JpaRepository<UserEntity, Long> {
-    Optional<UserEntity> findByEmail(String email);
+@ApplicationScoped
+public class UserRepository implements PanacheRepository<UserEntity> {
 
-    boolean existsByEmail(String email);
+    public Optional<UserEntity> findByEmail(String email) {
+        return find("email", email).firstResultOptional();
+    }
+
+    public boolean existsByEmail(String email) {
+        return count("email", email) > 0;
+    }
 }

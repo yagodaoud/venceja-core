@@ -1,16 +1,22 @@
 package com.yagodaoud.venceja.repository;
 
 import com.yagodaoud.venceja.entity.CategoriaEntity;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.stereotype.Repository;
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import jakarta.enterprise.context.ApplicationScoped;
+
+import java.util.List;
 
 /**
  * Repositório para categorias
  */
-@Repository
-public interface CategoriaRepository extends JpaRepository<CategoriaEntity, Long> {
+@ApplicationScoped
+public class CategoriaRepository implements PanacheRepository<CategoriaEntity> {
 
-    Page<CategoriaEntity> findByUserId(Long userId, Pageable pageable);
+    public List<CategoriaEntity> findByUserId(Long userId, int pageIndex, int pageSize) {
+        return find("user.id", userId).page(pageIndex, pageSize).list();
+    }
+
+    public long countByUserId(Long userId) {
+        return count("user.id", userId);
+    }
 }

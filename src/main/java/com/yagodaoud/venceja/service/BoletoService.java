@@ -3,6 +3,7 @@ package com.yagodaoud.venceja.service;
 import com.yagodaoud.venceja.dto.BoletoRequest;
 import com.yagodaoud.venceja.dto.BoletoResponse;
 import com.yagodaoud.venceja.dto.CategoriaResponse;
+import com.yagodaoud.venceja.dto.PagedResult;
 import com.yagodaoud.venceja.entity.BoletoEntity;
 import com.yagodaoud.venceja.entity.BoletoStatus;
 import com.yagodaoud.venceja.entity.CategoriaEntity;
@@ -10,34 +11,43 @@ import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.BoletoRepository;
 import com.yagodaoud.venceja.repository.CategoriaRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.scheduling.annotation.Async;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
-import org.springframework.web.multipart.MultipartFile;
+import org.eclipse.microprofile.faulttolerance.Asynchronous;
 
 import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
+import java.util.stream.Collectors;
 
 /**
  * Serviço para gerenciamento de boletos
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class BoletoService {
 
-    private final BoletoRepository boletoRepository;
-    private final CategoriaRepository categoriaRepository;
-    private final UserRepository userRepository;
-    private final VisionService visionService;
-    private final FirebaseService firebaseService;
+    @Inject
+    BoletoRepository boletoRepository;
+
+    @Inject
+    CategoriaRepository categoriaRepository;
+
+    @Inject
+    UserRepository userRepository;
+
+    @Inject
+    VisionService visionService;
+
+    @Inject
+    FirebaseService firebaseService;
+
+    @Inject
+    BoletoService self;
 
     /**
      * Cria um boleto manualmente (sem OCR)
@@ -45,7 +55,7 @@ public class BoletoService {
     @Transactional
     public BoletoResponse createBoleto(BoletoRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         if (request.getValor() == null || request.getVencimento() == null ||
                 request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
@@ -55,7 +65,7 @@ public class BoletoService {
 
         CategoriaEntity categoria = null;
         if (request.getCategoriaId() != null) {
-            categoria = categoriaRepository.findById(request.getCategoriaId())
+            categoria = categoriaRepository.findByIdOptional(request.getCategoriaId())
                     .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
             if (!categoria.getUser().getId().equals(user.getId())) {
@@ -74,7 +84,7 @@ public class BoletoService {
                 .categoria(categoria)
                 .build();
 
-        boleto = boletoRepository.save(boleto);
+        boletoRepository.persist(boleto);
         log.info("Boleto criado manualmente: ID {}", boleto.getId());
 
         return toResponse(boleto);
@@ -86,7 +96,7 @@ public class BoletoService {
     @Transactional
     public BoletoResponse updateBoleto(long id, BoletoRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         if (request.getValor() == null || request.getVencimento() == null ||
                 request.getFornecedor() == null || request.getFornecedor().isEmpty()) {
@@ -94,12 +104,12 @@ public class BoletoService {
                     "Dados obrigatórios não fornecidos. Valor, vencimento e fornecedor são necessários.");
         }
 
-        BoletoEntity boleto = boletoRepository.findById(id)
+        BoletoEntity boleto = boletoRepository.findByIdOptional(id)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
         CategoriaEntity categoria = null;
         if (request.getCategoriaId() != null) {
-            categoria = categoriaRepository.findById(request.getCategoriaId())
+            categoria = categoriaRepository.findByIdOptional(request.getCategoriaId())
                     .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
             if (!categoria.getUser().getId().equals(user.getId())) {
@@ -114,7 +124,7 @@ public class BoletoService {
         boleto.setObservacoes(request.getObservacoes());
         boleto.setCategoria(categoria);
 
-        boleto = boletoRepository.save(boleto);
+        // Entity is managed
         log.info("Boleto atualizado: ID {}", boleto.getId());
 
         return toResponse(boleto);
@@ -123,17 +133,15 @@ public class BoletoService {
     /**
      * Processa upload de boleto com OCR assíncrono
      */
-    @Async("taskExecutor")
-    public CompletableFuture<BoletoResponse> scanBoleto(
-            MultipartFile file,
+    @Asynchronous
+    public CompletionStage<BoletoResponse> scanBoleto(
+            byte[] fileBytes,
+            String fileName,
             BoletoRequest request,
             String userEmail) {
         try {
             UserEntity user = userRepository.findByEmail(userEmail)
-                    .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
-
-            byte[] fileBytes = file.getBytes();
-            String fileName = file.getOriginalFilename();
+                    .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
             String ocrText = visionService.detectDocumentText(fileBytes);
             log.info("OCR concluído, texto extraído: {} caracteres", ocrText != null ? ocrText.length() : 0);
@@ -167,7 +175,7 @@ public class BoletoService {
             mergedRequest.setObservacoes(request != null ? request.getObservacoes() : null);
             mergedRequest.setCategoriaId(request != null ? request.getCategoriaId() : null);
 
-            BoletoResponse response = createBoleto(mergedRequest, userEmail);
+            BoletoResponse response = self.createBoleto(mergedRequest, userEmail);
 
             return CompletableFuture.completedFuture(response);
 
@@ -180,23 +188,32 @@ public class BoletoService {
     /**
      * Lista boletos do usuário com paginação e filtros de período
      */
-    @Transactional(readOnly = true)
-    public Page<BoletoResponse> listBoletos(
+    @Transactional // readOnly not supported directly
+    public PagedResult<BoletoResponse> listBoletos(
             String userEmail,
             List<BoletoStatus> statuses,
             LocalDate dataInicio,
             LocalDate dataFim,
-            Pageable pageable) {
+            int page,
+            int size,
+            String sortBy,
+            String direction) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         updateOverdueBoletos(user.getId());
 
-        // CHANGE: Pass list to repository
-        Page<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
-                user.getId(), statuses, dataInicio, dataFim, pageable);
+        List<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
+                user.getId(), statuses, dataInicio, dataFim, page, size, sortBy, direction);
 
-        return boletos.map(this::toResponse);
+        long total = boletoRepository.countByUserIdWithFilters(
+                user.getId(), statuses, dataInicio, dataFim);
+
+        List<BoletoResponse> content = boletos.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+
+        return new PagedResult<>(content, total, page, size);
     }
 
     /**
@@ -206,12 +223,13 @@ public class BoletoService {
     public BoletoResponse pagarBoleto(
             Long boletoId,
             String userEmail,
-            MultipartFile comprovante,
+            byte[] comprovanteBytes,
+            String comprovanteName,
             Boolean semComprovante) throws IOException {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        BoletoEntity boleto = boletoRepository.findById(boletoId)
+        BoletoEntity boleto = boletoRepository.findByIdOptional(boletoId)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
         if (!boleto.getUser().getId().equals(user.getId())) {
@@ -220,10 +238,8 @@ public class BoletoService {
 
         boleto.setStatus(BoletoStatus.PAGO);
 
-        if (comprovante != null && !comprovante.isEmpty()) {
-            byte[] fileBytes = comprovante.getBytes();
-            String fileName = comprovante.getOriginalFilename();
-            String comprovanteUrl = firebaseService.uploadComprovante(fileBytes, fileName);
+        if (comprovanteBytes != null && comprovanteBytes.length > 0) {
+            String comprovanteUrl = firebaseService.uploadComprovante(comprovanteBytes, comprovanteName);
             boleto.setComprovanteUrl(comprovanteUrl);
             boleto.setSemComprovante(false);
         } else if (Boolean.TRUE.equals(semComprovante)) {
@@ -231,8 +247,7 @@ public class BoletoService {
             boleto.setComprovanteUrl(null);
         }
 
-        boleto = boletoRepository.save(boleto);
-
+        // Entity is managed
         log.info("Boleto {} marcado como pago", boletoId);
 
         return toResponse(boleto);
@@ -247,7 +262,7 @@ public class BoletoService {
         overdueBoletos.forEach(boleto -> {
             if (boleto.getStatus() == BoletoStatus.PENDENTE) {
                 boleto.setStatus(BoletoStatus.VENCIDO);
-                boletoRepository.save(boleto);
+                // Entity is managed
             }
         });
     }
@@ -301,10 +316,10 @@ public class BoletoService {
     public void deletarBoleto(Long boletoId, String userEmail) {
         // Busca o usuário
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         // Busca o boleto
-        BoletoEntity boleto = boletoRepository.findById(boletoId)
+        BoletoEntity boleto = boletoRepository.findByIdOptional(boletoId)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
         // Verifica se o boleto pertence ao usuário

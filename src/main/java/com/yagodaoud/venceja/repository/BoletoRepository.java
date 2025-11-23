@@ -2,61 +2,112 @@ package com.yagodaoud.venceja.repository;
 
 import com.yagodaoud.venceja.entity.BoletoEntity;
 import com.yagodaoud.venceja.entity.BoletoStatus;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import jakarta.enterprise.context.ApplicationScoped;
 
 import java.time.LocalDate;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * Repositório para boletos - OTIMIZADO com JOIN FETCH
+ * Repositório para boletos
  */
-@Repository
-public interface BoletoRepository extends JpaRepository<BoletoEntity, Long> {
+@ApplicationScoped
+public class BoletoRepository implements PanacheRepository<BoletoEntity> {
 
-    @Query("""
+    public List<BoletoEntity> findByUserIdWithFilters(
+            Long userId,
+            List<BoletoStatus> statuses,
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            int pageIndex,
+            int pageSize,
+            String sortBy,
+            String direction) {
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+
+        StringBuilder query = new StringBuilder("""
         SELECT b FROM BoletoEntity b
         LEFT JOIN FETCH b.categoria
         WHERE b.user.id = :userId
-          AND (:statuses IS NULL OR b.status IN :statuses)
-          AND (COALESCE(:dataInicio, b.vencimento) <= b.vencimento)
-          AND (COALESCE(:dataFim, b.vencimento) >= b.vencimento)
-        ORDER BY b.vencimento ASC
-        """)
-    Page<BoletoEntity> findByUserIdWithFilters(
-            @Param("userId") Long userId,
-            @Param("statuses") List<BoletoStatus> statuses, // CHANGE: List parameter
-            @Param("dataInicio") LocalDate dataInicio,
-            @Param("dataFim") LocalDate dataFim,
-            Pageable pageable);
+    """);
 
-    /**
-     * Busca boletos vencidos - também com JOIN FETCH
-     */
-    @Query("""
-        SELECT b FROM BoletoEntity b
-        LEFT JOIN FETCH b.categoria
-        WHERE b.user.id = :userId
-          AND b.status = 'PENDENTE'
-          AND b.vencimento < CURRENT_DATE
-        """)
-    List<BoletoEntity> findOverdueBoletosByUserId(@Param("userId") Long userId);
+        if (statuses != null && !statuses.isEmpty()) {
+            query.append(" AND b.status IN :statuses");
+            params.put("statuses", statuses);
+        }
 
-    /**
-     * Busca boletos próximos do vencimento para alertas
-     */
-    @Query("""
-        SELECT b FROM BoletoEntity b
-        LEFT JOIN FETCH b.categoria
-        WHERE b.status = 'PENDENTE'
-          AND b.vencimento <= :maxDate
-          AND b.vencimento >= :minDate
-        """)
-    List<BoletoEntity> findPendingBoletosNearDueDate(
-            @Param("minDate") LocalDate minDate,
-            @Param("maxDate") LocalDate maxDate);
+        if (dataInicio != null) {
+            query.append(" AND b.vencimento >= :dataInicio");
+            params.put("dataInicio", dataInicio);
+        }
+
+        if (dataFim != null) {
+            query.append(" AND b.vencimento <= :dataFim");
+            params.put("dataFim", dataFim);
+        }
+
+        io.quarkus.panache.common.Sort sort = io.quarkus.panache.common.Sort.by("b." + sortBy);
+        if ("desc".equalsIgnoreCase(direction)) {
+            sort.descending();
+        } else {
+            sort.ascending();
+        }
+
+        return find(query.toString(), sort, params)
+                .page(pageIndex, pageSize)
+                .list();
+    }
+
+    public long countByUserIdWithFilters(
+            Long userId,
+            List<BoletoStatus> statuses,
+            LocalDate dataInicio,
+            LocalDate dataFim) {
+
+        Map<String, Object> params = new HashMap<>();
+        params.put("userId", userId);
+
+        StringBuilder query = new StringBuilder("FROM BoletoEntity b WHERE b.user.id = :userId");
+
+        if (statuses != null && !statuses.isEmpty()) {
+            query.append(" AND b.status IN :statuses");
+            params.put("statuses", statuses);
+        }
+
+        if (dataInicio != null) {
+            query.append(" AND b.vencimento >= :dataInicio");
+            params.put("dataInicio", dataInicio);
+        }
+
+        if (dataFim != null) {
+            query.append(" AND b.vencimento <= :dataFim");
+            params.put("dataFim", dataFim);
+        }
+
+        return count(query.toString(), params);
+    }
+
+    public List<BoletoEntity> findOverdueBoletosByUserId(Long userId) {
+        return find("""
+            SELECT b FROM BoletoEntity b
+            LEFT JOIN FETCH b.categoria
+            WHERE b.user.id = ?1
+              AND b.status = 'PENDENTE'
+              AND b.vencimento < CURRENT_DATE
+            """, userId).list();
+    }
+
+    public List<BoletoEntity> findPendingBoletosNearDueDate(LocalDate minDate, LocalDate maxDate) {
+        return find("""
+            SELECT b FROM BoletoEntity b
+            LEFT JOIN FETCH b.categoria
+            WHERE b.status = 'PENDENTE'
+              AND b.vencimento <= ?1
+              AND b.vencimento >= ?2
+            """, maxDate, minDate).list();
+    }
 }

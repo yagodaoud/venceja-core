@@ -3,12 +3,13 @@ package com.yagodaoud.venceja.service;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.vision.v1.*;
 import com.google.protobuf.ByteString;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.stereotype.Service;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -23,11 +24,12 @@ import java.util.regex.Pattern;
  * Serviço para OCR usando Google Cloud Vision API
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class VisionService {
 
-    private final GoogleCredentials googleCredentials;
+    @Inject
+    @Named("google")
+    GoogleCredentials googleCredentials;
 
     private ImageAnnotatorClient visionClient;
 

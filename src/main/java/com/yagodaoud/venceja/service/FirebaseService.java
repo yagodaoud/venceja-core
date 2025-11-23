@@ -1,38 +1,38 @@
 package com.yagodaoud.venceja.service;
 
 import com.google.auth.oauth2.GoogleCredentials;
-import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageOptions;
-import lombok.RequiredArgsConstructor;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Service;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.io.IOException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
 
 /**
- * Serviço para upload de arquivos no Firebase Storage
- * Usa as mesmas credenciais do Google Cloud (Vision API)
+ * Serviço para interação com Firebase Storage
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class FirebaseService {
 
-    private final GoogleCredentials firebaseCredentials;
+    @ConfigProperty(name = "firebase.storage.bucket")
+    String bucketName;
 
-    @Value("${firebase.storage.bucket:}")
-    private String bucketName;
+    @ConfigProperty(name = "firebase.storage.project-id")
+    String projectId;
 
-    @Value("${firebase.storage.project-id:}")
-    private String projectId;
+    @Inject
+    @Named("firebase")
+    GoogleCredentials firebaseCredentials;
 
     private Storage storage;
 
@@ -69,12 +69,16 @@ public class FirebaseService {
 
     @PreDestroy
     public void cleanup() {
+        // Storage client doesn't always implement Closeable in a way that needs explicit closing for HTTP clients,
+        // but if it does:
         if (storage != null) {
             try {
-                storage.close();
-                log.info("Vision Client fechado");
+                if (storage instanceof AutoCloseable) {
+                    ((AutoCloseable) storage).close();
+                }
+                log.info("Firebase Storage Client fechado");
             } catch (Exception e) {
-                log.error("Erro ao fechar Vision Client", e);
+                log.error("Erro ao fechar Firebase Storage Client", e);
             }
         }
     }
@@ -143,23 +147,23 @@ public class FirebaseService {
 
         try {
             String objectName = fileUrl.substring(fileUrl.indexOf("boletos/"));
-            
+
             if (objectName.contains("?")) {
                 objectName = objectName.substring(0, objectName.indexOf("?"));
             }
-            
+
             // Decode URL-encoded characters (e.g., %20 to space)
             objectName = java.net.URLDecoder.decode(objectName, java.nio.charset.StandardCharsets.UTF_8);
-            
+
             log.info("Deletando arquivo do Firebase Storage: {}", objectName);
             boolean deleted = storage.delete(BlobId.of(bucketName, objectName));
-            
+
             if (deleted) {
                 log.info("Arquivo deletado com sucesso: {}", objectName);
             } else {
                 log.warn("Arquivo não encontrado no Firebase Storage: {}", objectName);
             }
-            
+
             return deleted;
         } catch (Exception e) {
             log.error("Erro ao deletar arquivo do Firebase Storage: {}", e.getMessage(), e);

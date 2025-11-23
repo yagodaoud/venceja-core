@@ -2,41 +2,49 @@ package com.yagodaoud.venceja.service;
 
 import com.yagodaoud.venceja.dto.CategoriaRequest;
 import com.yagodaoud.venceja.dto.CategoriaResponse;
+import com.yagodaoud.venceja.dto.PagedResult;
 import com.yagodaoud.venceja.entity.CategoriaEntity;
 import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.CategoriaRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Serviço para gerenciamento de categorias
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class CategoriaService {
 
-    private final CategoriaRepository categoriaRepository;
-    private final UserRepository userRepository;
+    @Inject
+    CategoriaRepository categoriaRepository;
+
+    @Inject
+    UserRepository userRepository;
 
     /**
      * Lista categorias do usuário com paginação
      */
-    @Transactional(readOnly = true)
-    public Page<CategoriaResponse> listCategorias(String userEmail, Pageable pageable) {
+    @Transactional // readOnly not supported directly
+    public PagedResult<CategoriaResponse> listCategorias(String userEmail, int page, int size) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        Page<CategoriaEntity> categorias = categoriaRepository.findByUserId(user.getId(), pageable);
-        return categorias.map(this::toResponse);
+        List<CategoriaEntity> categorias = categoriaRepository.findByUserId(user.getId(), page, size);
+        long total = categoriaRepository.countByUserId(user.getId());
+
+        List<CategoriaResponse> content = categorias.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+
+        return new PagedResult<>(content, total, page, size);
     }
 
     /**
@@ -45,7 +53,7 @@ public class CategoriaService {
     @Transactional
     public CategoriaResponse createCategoria(CategoriaRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         CategoriaEntity categoria = CategoriaEntity.builder()
                 .user(user)
@@ -54,7 +62,7 @@ public class CategoriaService {
                 .createdAt(LocalDateTime.now())
                 .build();
 
-        categoria = categoriaRepository.save(categoria);
+        categoriaRepository.persist(categoria);
         log.info("Categoria criada: ID {}", categoria.getId());
 
         return toResponse(categoria);
@@ -66,9 +74,9 @@ public class CategoriaService {
     @Transactional
     public CategoriaResponse updateCategoria(Long id, CategoriaRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        CategoriaEntity categoria = categoriaRepository.findById(id)
+        CategoriaEntity categoria = categoriaRepository.findByIdOptional(id)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
         // Verifica se a categoria pertence ao usuário
@@ -80,7 +88,7 @@ public class CategoriaService {
         categoria.setCor(request.getCor());
         categoria.setUpdatedAt(LocalDateTime.now());
 
-        categoria = categoriaRepository.save(categoria);
+        // Entity is managed, changes are automatically flushed on commit
         log.info("Categoria atualizada: ID {}", categoria.getId());
 
         return toResponse(categoria);
@@ -92,9 +100,9 @@ public class CategoriaService {
     @Transactional
     public void deleteCategoria(Long id, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        CategoriaEntity categoria = categoriaRepository.findById(id)
+        CategoriaEntity categoria = categoriaRepository.findByIdOptional(id)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
         if (!categoria.getUser().getId().equals(user.getId())) {

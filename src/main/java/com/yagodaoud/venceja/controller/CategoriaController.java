@@ -1,70 +1,66 @@
 package com.yagodaoud.venceja.controller;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.yagodaoud.venceja.dto.ApiResponse;
 import com.yagodaoud.venceja.dto.CategoriaRequest;
 import com.yagodaoud.venceja.dto.CategoriaResponse;
+import com.yagodaoud.venceja.dto.PagedResult;
 import com.yagodaoud.venceja.service.CategoriaService;
+import io.quarkus.security.Authenticated;
+import io.quarkus.security.identity.SecurityIdentity;
+import jakarta.inject.Inject;
 import jakarta.validation.Valid;
-import lombok.RequiredArgsConstructor;
-import lombok.SneakyThrows;
+import jakarta.ws.rs.*;
+import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.http.ResponseEntity;
-import org.springframework.security.core.Authentication;
-import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.web.bind.annotation.*;
 
-import java.util.ArrayList;
 import java.util.List;
 
 /**
  * Controller para gerenciamento de categorias
  */
 @Slf4j
-@RestController
-@RequestMapping("/api/v1/categorias")
-@RequiredArgsConstructor
+@Path("/api/v1/categorias")
+@Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
+@Authenticated
 public class CategoriaController {
 
-    private final CategoriaService categoriaService;
-    private final ObjectMapper objectMapper;
+    @Inject
+    CategoriaService categoriaService;
 
-    @GetMapping
-    public ResponseEntity<ApiResponse<List<CategoriaResponse>>> listCategorias(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String status,
-            Authentication authentication) {
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+    @Inject
+    SecurityIdentity securityIdentity;
 
-        Pageable pageable = PageRequest.of(page, size);
-
-        Page<CategoriaResponse> categorias = categoriaService.listCategorias(userEmail, pageable);
-        List<CategoriaResponse> categoriasList = new ArrayList<>(categorias.getContent());
-
+    @GET
+    public Response listCategorias(
+            @QueryParam("page") @DefaultValue("0") int page,
+            @QueryParam("size") @DefaultValue("10") int size) {
+        
+        String userEmail = securityIdentity.getPrincipal().getName();
+        
+        PagedResult<CategoriaResponse> result = categoriaService.listCategorias(userEmail, page, size);
+        
         ApiResponse.Meta meta = ApiResponse.Meta.builder()
-                .total(categorias.getTotalElements())
-                .page(page)
-                .size(size)
+                .total(result.getTotalElements())
+                .page(result.getPage())
+                .size(result.getSize())
                 .build();
-
+        
         ApiResponse<List<CategoriaResponse>> response = ApiResponse.<List<CategoriaResponse>>builder()
-                .data(categoriasList)
+                .data(result.getContent())
                 .message("Categorias listadas com sucesso")
                 .meta(meta)
                 .build();
-
-        return ResponseEntity.ok(response);
+                
+        return Response.ok(response).build();
     }
 
-    @PostMapping
-    public ResponseEntity<ApiResponse<CategoriaResponse>> createCategoria(
-            @Valid @RequestBody CategoriaRequest request,
-            Authentication authentication) {
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+    @POST
+    public Response createCategoria(
+            @Valid CategoriaRequest request) {
+        
+        String userEmail = securityIdentity.getPrincipal().getName();
 
         CategoriaResponse categoria = categoriaService.createCategoria(request, userEmail);
 
@@ -73,15 +69,16 @@ public class CategoriaController {
                 .message("Categoria criada com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.status(Response.Status.CREATED).entity(response).build();
     }
 
-    @PutMapping("/{id}")
-    public ResponseEntity<ApiResponse<CategoriaResponse>> updateCategoria(
-            @PathVariable Long id,
-            @Valid @RequestBody CategoriaRequest request,
-            Authentication authentication) {
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+    @PUT
+    @Path("/{id}")
+    public Response updateCategoria(
+            @PathParam("id") Long id,
+            @Valid CategoriaRequest request) {
+        
+        String userEmail = securityIdentity.getPrincipal().getName();
 
         CategoriaResponse categoria = categoriaService.updateCategoria(id, request, userEmail);
 
@@ -90,14 +87,15 @@ public class CategoriaController {
                 .message("Categoria atualizada com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 
-    @DeleteMapping("/{id}")
-    public ResponseEntity<ApiResponse<Void>> deleteCategoria(
-            @PathVariable Long id,
-            Authentication authentication) {
-        String userEmail = ((UserDetails) authentication.getPrincipal()).getUsername();
+    @DELETE
+    @Path("/{id}")
+    public Response deleteCategoria(
+            @PathParam("id") Long id) {
+        
+        String userEmail = securityIdentity.getPrincipal().getName();
 
         categoriaService.deleteCategoria(id, userEmail);
 
@@ -105,6 +103,6 @@ public class CategoriaController {
                 .message("Categoria deletada com sucesso")
                 .build();
 
-        return ResponseEntity.ok(response);
+        return Response.ok(response).build();
     }
 }

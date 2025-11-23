@@ -4,13 +4,12 @@ import com.yagodaoud.venceja.entity.RefreshTokenEntity;
 import com.yagodaoud.venceja.entity.UserEntity;
 import com.yagodaoud.venceja.repository.RefreshTokenRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
-import lombok.RequiredArgsConstructor;
+import io.quarkus.scheduler.Scheduled;
+import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.scheduling.annotation.Scheduled;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -20,18 +19,20 @@ import java.util.UUID;
  * Serviço para gerenciamento de refresh tokens
  */
 @Slf4j
-@Service
-@RequiredArgsConstructor
+@ApplicationScoped
 public class RefreshTokenService {
 
-    private final RefreshTokenRepository refreshTokenRepository;
-    private final UserRepository userRepository;
+    @Inject
+    RefreshTokenRepository refreshTokenRepository;
 
-    @Value("${jwt.refresh-token.expiration:2592000000}") // 30 dias em ms
-    private Long refreshTokenDurationMs;
+    @Inject
+    UserRepository userRepository;
 
-    @Value("${jwt.refresh-token.max-per-user:5}") // Máximo de tokens ativos por usuário
-    private Integer maxTokensPerUser;
+    @ConfigProperty(name = "jwt.refresh-token.expiration", defaultValue = "2592000000")
+    Long refreshTokenDurationMs;
+
+    @ConfigProperty(name = "jwt.refresh-token.max-per-user", defaultValue = "5")
+    Integer maxTokensPerUser;
 
     /**
      * Cria um novo refresh token para o usuário
@@ -39,7 +40,7 @@ public class RefreshTokenService {
     @Transactional
     public RefreshTokenEntity createRefreshToken(String userEmail, String deviceInfo) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         // Remove tokens expirados do usuário
         cleanupExpiredTokens(user.getId());
@@ -56,7 +57,7 @@ public class RefreshTokenService {
 
             if (oldestToken != null) {
                 oldestToken.setRevoked(true);
-                refreshTokenRepository.save(oldestToken);
+                // Entity is managed, no need to save
                 log.info("Token antigo revogado para usuário: {}", userEmail);
             }
         }
@@ -70,7 +71,7 @@ public class RefreshTokenService {
                 .revoked(false)
                 .build();
 
-        refreshToken = refreshTokenRepository.save(refreshToken);
+        refreshTokenRepository.persist(refreshToken);
         log.info("Refresh token criado para usuário: {}", userEmail);
 
         return refreshToken;
@@ -79,7 +80,7 @@ public class RefreshTokenService {
     /**
      * Valida e retorna o refresh token
      */
-    @Transactional(readOnly = true)
+    @Transactional // readOnly not supported in Jakarta Transactional directly, but default is required
     public RefreshTokenEntity validateRefreshToken(String token) {
         RefreshTokenEntity refreshToken = refreshTokenRepository.findByToken(token)
                 .orElseThrow(() -> new IllegalArgumentException("Refresh token inválido"));
@@ -106,7 +107,7 @@ public class RefreshTokenService {
                 .orElseThrow(() -> new IllegalArgumentException("Refresh token não encontrado"));
 
         refreshToken.setRevoked(true);
-        refreshTokenRepository.save(refreshToken);
+        // Entity is managed
         log.info("Refresh token revogado");
     }
 
@@ -116,7 +117,7 @@ public class RefreshTokenService {
     @Transactional
     public void revokeAllUserTokens(String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         refreshTokenRepository.revokeAllUserTokens(user.getId());
         log.info("Todos os tokens revogados para usuário: {}", userEmail);
@@ -128,8 +129,8 @@ public class RefreshTokenService {
     @Transactional
     public void cleanupExpiredTokens(Long userId) {
         List<RefreshTokenEntity> tokens = refreshTokenRepository.findByUser(
-                userRepository.findById(userId)
-                        .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"))
+                userRepository.findByIdOptional(userId)
+                        .orElseThrow(() -> new RuntimeException("Usuário não encontrado"))
         );
 
         tokens.stream()
@@ -151,10 +152,10 @@ public class RefreshTokenService {
     /**
      * Lista tokens ativos do usuário
      */
-    @Transactional(readOnly = true)
+    @Transactional
     public List<RefreshTokenEntity> getActiveTokens(String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
-                .orElseThrow(() -> new UsernameNotFoundException("Usuário não encontrado"));
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         return refreshTokenRepository.findActiveTokensByUserId(user.getId(), LocalDateTime.now());
     }

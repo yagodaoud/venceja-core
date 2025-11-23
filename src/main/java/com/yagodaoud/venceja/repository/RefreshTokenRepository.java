@@ -2,11 +2,8 @@ package com.yagodaoud.venceja.repository;
 
 import com.yagodaoud.venceja.entity.RefreshTokenEntity;
 import com.yagodaoud.venceja.entity.UserEntity;
-import org.springframework.data.jpa.repository.JpaRepository;
-import org.springframework.data.jpa.repository.Modifying;
-import org.springframework.data.jpa.repository.Query;
-import org.springframework.data.repository.query.Param;
-import org.springframework.stereotype.Repository;
+import io.quarkus.hibernate.orm.panache.PanacheRepository;
+import jakarta.enterprise.context.ApplicationScoped;
 
 import java.time.LocalDateTime;
 import java.util.List;
@@ -15,25 +12,30 @@ import java.util.Optional;
 /**
  * Repositório para refresh tokens
  */
-@Repository
-public interface RefreshTokenRepository extends JpaRepository<RefreshTokenEntity, Long> {
+@ApplicationScoped
+public class RefreshTokenRepository implements PanacheRepository<RefreshTokenEntity> {
 
-    Optional<RefreshTokenEntity> findByToken(String token);
+    public Optional<RefreshTokenEntity> findByToken(String token) {
+        return find("token", token).firstResultOptional();
+    }
 
-    List<RefreshTokenEntity> findByUser(UserEntity user);
+    public List<RefreshTokenEntity> findByUser(UserEntity user) {
+        return find("user", user).list();
+    }
 
-    @Query("SELECT rt FROM RefreshTokenEntity rt WHERE rt.user.id = :userId AND rt.revoked = false AND rt.expiresAt > :now")
-    List<RefreshTokenEntity> findActiveTokensByUserId(@Param("userId") Long userId, @Param("now") LocalDateTime now);
+    public List<RefreshTokenEntity> findActiveTokensByUserId(Long userId, LocalDateTime now) {
+        return find("user.id = ?1 and revoked = false and expiresAt > ?2", userId, now).list();
+    }
 
-    @Modifying
-    @Query("DELETE FROM RefreshTokenEntity rt WHERE rt.expiresAt < :now")
-    void deleteExpiredTokens(@Param("now") LocalDateTime now);
+    public void deleteExpiredTokens(LocalDateTime now) {
+        delete("expiresAt < ?1", now);
+    }
 
-    @Modifying
-    @Query("UPDATE RefreshTokenEntity rt SET rt.revoked = true WHERE rt.user.id = :userId")
-    void revokeAllUserTokens(@Param("userId") Long userId);
+    public void revokeAllUserTokens(Long userId) {
+        update("revoked = true where user.id = ?1", userId);
+    }
 
-    @Modifying
-    @Query("DELETE FROM RefreshTokenEntity rt WHERE rt.user.id = :userId")
-    void deleteAllByUserId(@Param("userId") Long userId);
+    public void deleteAllByUserId(Long userId) {
+        delete("user.id = ?1", userId);
+    }
 }
