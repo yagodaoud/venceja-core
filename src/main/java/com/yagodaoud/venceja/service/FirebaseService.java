@@ -9,13 +9,30 @@ import jakarta.annotation.PostConstruct;
 import jakarta.annotation.PreDestroy;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.inject.Named;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 
 import java.io.IOException;
 import java.net.URL;
 import java.util.concurrent.TimeUnit;
+
+/**
+ * Serviço para interação com Firebase Storage
+ */
+@Slf4j
+@ApplicationScoped
+public class FirebaseService {
+
+    @ConfigProperty(name = "firebase.storage.bucket")
+    String bucketName;
+
+    @ConfigProperty(name = "quarkus.google.cloud.project-id")
     String projectId;
+
+    @Inject
+    @Named("firebase")
+    GoogleCredentials firebaseCredentials;
 
     private Storage storage;
 
@@ -56,12 +73,6 @@ import java.util.concurrent.TimeUnit;
         // but if it does:
         if (storage != null) {
             try {
-                // storage.close(); // Storage interface doesn't extend AutoCloseable in older versions, but let's check.
-                // Actually Google Cloud Storage client is usually stateless-ish or manages its own resources.
-                // The original code had storage.close(), so let's try to keep it if possible, or remove if not needed.
-                // Checking the original code: it caught exception.
-                // Storage interface extends Service<StorageOptions>.
-                // In newer libraries it might be AutoCloseable.
                 if (storage instanceof AutoCloseable) {
                     ((AutoCloseable) storage).close();
                 }
@@ -136,23 +147,23 @@ import java.util.concurrent.TimeUnit;
 
         try {
             String objectName = fileUrl.substring(fileUrl.indexOf("boletos/"));
-            
+
             if (objectName.contains("?")) {
                 objectName = objectName.substring(0, objectName.indexOf("?"));
             }
-            
+
             // Decode URL-encoded characters (e.g., %20 to space)
             objectName = java.net.URLDecoder.decode(objectName, java.nio.charset.StandardCharsets.UTF_8);
-            
+
             log.info("Deletando arquivo do Firebase Storage: {}", objectName);
             boolean deleted = storage.delete(BlobId.of(bucketName, objectName));
-            
+
             if (deleted) {
                 log.info("Arquivo deletado com sucesso: {}", objectName);
             } else {
                 log.warn("Arquivo não encontrado no Firebase Storage: {}", objectName);
             }
-            
+
             return deleted;
         } catch (Exception e) {
             log.error("Erro ao deletar arquivo do Firebase Storage: {}", e.getMessage(), e);

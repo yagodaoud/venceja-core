@@ -83,6 +83,16 @@
             <artifactId>quarkus-smallrye-fault-tolerance</artifactId>
         </dependency>
 
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-resteasy-reactive</artifactId>
+        </dependency>
+
+        <dependency>
+            <groupId>io.quarkus</groupId>
+            <artifactId>quarkus-elytron-security-common</artifactId>
+        </dependency>
+
         <!-- Google Cloud (Keep existing versions or find Quarkus equivalents if needed, but standard libs usually work) -->
         <dependency>
             <groupId>com.google.cloud</groupId>

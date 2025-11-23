@@ -49,7 +49,7 @@ public class BoletoController {
     @POST
     @Path("/scan")
     @Consumes(MediaType.MULTIPART_FORM_DATA)
-    public Response scanBoleto(
+    public java.util.concurrent.CompletionStage<Response> scanBoleto(
             @RestForm("file") FileUpload file,
             @RestForm("data") String dataJson) {
         try {
@@ -70,20 +70,19 @@ public class BoletoController {
 
             byte[] fileBytes = Files.readAllBytes(file.uploadedFile());
 
-            CompletableFuture<BoletoResponse> future = boletoService.scanBoleto(
+            return boletoService.scanBoleto(
                     fileBytes,
                     file.fileName(),
                     request,
                     userEmail
-            );
-            BoletoResponse response = future.get();
+            ).thenApply(response -> {
+                ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
+                        .data(response)
+                        .message("Boleto processado com sucesso")
+                        .build();
 
-            ApiResponse<BoletoResponse> apiResponse = ApiResponse.<BoletoResponse>builder()
-                    .data(response)
-                    .message("Boleto processado com sucesso")
-                    .build();
-
-            return Response.status(Response.Status.CREATED).entity(apiResponse).build();
+                return Response.status(Response.Status.CREATED).entity(apiResponse).build();
+            });
 
         } catch (Exception e) {
             log.error("Erro ao processar boleto: {}", e.getMessage(), e);

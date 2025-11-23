@@ -1,4 +1,3 @@
-```java
 package com.yagodaoud.venceja.service;
 
 import com.yagodaoud.venceja.dto.CategoriaRequest;
@@ -77,7 +76,7 @@ public class CategoriaService {
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        CategoriaEntity categoria = categoriaRepository.findById(id)
+        CategoriaEntity categoria = categoriaRepository.findByIdOptional(id)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
         // Verifica se a categoria pertence ao usuário
@@ -103,7 +102,7 @@ public class CategoriaService {
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        CategoriaEntity categoria = categoriaRepository.findById(id)
+        CategoriaEntity categoria = categoriaRepository.findByIdOptional(id)
                 .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
         if (!categoria.getUser().getId().equals(user.getId())) {
@@ -126,4 +125,3 @@ public class CategoriaService {
                 .build();
     }
 }
-```

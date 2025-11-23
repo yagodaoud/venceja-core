@@ -1,4 +1,3 @@
-```
 package com.yagodaoud.venceja.repository;
 
 import com.yagodaoud.venceja.entity.RefreshTokenEntity;
@@ -40,4 +39,3 @@ public class RefreshTokenRepository implements PanacheRepository<RefreshTokenEnt
         delete("user.id = ?1", userId);
     }
 }
-```

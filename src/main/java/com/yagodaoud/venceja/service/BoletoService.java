@@ -1,4 +1,3 @@
-```java
 package com.yagodaoud.venceja.service;
 
 import com.yagodaoud.venceja.dto.BoletoRequest;
@@ -22,6 +21,7 @@ import java.io.IOException;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
 /**
@@ -46,6 +46,9 @@ public class BoletoService {
     @Inject
     FirebaseService firebaseService;
 
+    @Inject
+    BoletoService self;
+
     /**
      * Cria um boleto manualmente (sem OCR)
      */
@@ -62,7 +65,7 @@ public class BoletoService {
 
         CategoriaEntity categoria = null;
         if (request.getCategoriaId() != null) {
-            categoria = categoriaRepository.findById(request.getCategoriaId())
+            categoria = categoriaRepository.findByIdOptional(request.getCategoriaId())
                     .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
             if (!categoria.getUser().getId().equals(user.getId())) {
@@ -101,12 +104,12 @@ public class BoletoService {
                     "Dados obrigatórios não fornecidos. Valor, vencimento e fornecedor são necessários.");
         }
 
-        BoletoEntity boleto = boletoRepository.findById(id)
+        BoletoEntity boleto = boletoRepository.findByIdOptional(id)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
         CategoriaEntity categoria = null;
         if (request.getCategoriaId() != null) {
-            categoria = categoriaRepository.findById(request.getCategoriaId())
+            categoria = categoriaRepository.findByIdOptional(request.getCategoriaId())
                     .orElseThrow(() -> new IllegalArgumentException("Categoria não encontrada"));
 
             if (!categoria.getUser().getId().equals(user.getId())) {
@@ -131,7 +134,7 @@ public class BoletoService {
      * Processa upload de boleto com OCR assíncrono
      */
     @Asynchronous
-    public CompletableFuture<BoletoResponse> scanBoleto(
+    public CompletionStage<BoletoResponse> scanBoleto(
             byte[] fileBytes,
             String fileName,
             BoletoRequest request,
@@ -172,7 +175,7 @@ public class BoletoService {
             mergedRequest.setObservacoes(request != null ? request.getObservacoes() : null);
             mergedRequest.setCategoriaId(request != null ? request.getCategoriaId() : null);
 
-            BoletoResponse response = createBoleto(mergedRequest, userEmail);
+            BoletoResponse response = self.createBoleto(mergedRequest, userEmail);
 
             return CompletableFuture.completedFuture(response);
 
@@ -180,6 +183,43 @@ public class BoletoService {
             log.error("Erro ao processar boleto: {}", e.getMessage(), e);
             return CompletableFuture.failedFuture(e);
         }
+    }
+
+    /**
+     * Lista boletos do usuário com paginação e filtros de período
+     */
+    @Transactional // readOnly not supported directly
+    public PagedResult<BoletoResponse> listBoletos(
+            String userEmail,
+            List<BoletoStatus> statuses,
+            LocalDate dataInicio,
+            LocalDate dataFim,
+            int page,
+            int size,
+            String sortBy,
+            String direction) {
+        UserEntity user = userRepository.findByEmail(userEmail)
+                .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
+
+        updateOverdueBoletos(user.getId());
+
+        List<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
+                user.getId(), statuses, dataInicio, dataFim, page, size, sortBy, direction);
+
+        long total = boletoRepository.countByUserIdWithFilters(
+                user.getId(), statuses, dataInicio, dataFim);
+
+        List<BoletoResponse> content = boletos.stream()
+                .map(this::toResponse)
+                .collect(Collectors.toList());
+
+        return new PagedResult<>(content, total, page, size);
+    }
+
+    /**
+     * Marca boleto como pago
+     */
+    @Transactional
     public BoletoResponse pagarBoleto(
             Long boletoId,
             String userEmail,
@@ -189,7 +229,7 @@ public class BoletoService {
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        BoletoEntity boleto = boletoRepository.findById(boletoId)
+        BoletoEntity boleto = boletoRepository.findByIdOptional(boletoId)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
         if (!boleto.getUser().getId().equals(user.getId())) {
@@ -279,7 +319,7 @@ public class BoletoService {
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
         // Busca o boleto
-        BoletoEntity boleto = boletoRepository.findById(boletoId)
+        BoletoEntity boleto = boletoRepository.findByIdOptional(boletoId)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
         // Verifica se o boleto pertence ao usuário
@@ -303,4 +343,3 @@ public class BoletoService {
         log.info("Boleto ID: {} removido com sucesso", boletoId);
     }
 }
-```

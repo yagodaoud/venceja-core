@@ -129,7 +129,7 @@ public class RefreshTokenService {
     @Transactional
     public void cleanupExpiredTokens(Long userId) {
         List<RefreshTokenEntity> tokens = refreshTokenRepository.findByUser(
-                userRepository.findById(userId)
+                userRepository.findByIdOptional(userId)
                         .orElseThrow(() -> new RuntimeException("Usuário não encontrado"))
         );
 
