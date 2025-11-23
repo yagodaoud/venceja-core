@@ -3,13 +3,12 @@ package com.yagodaoud.venceja.config;
 import io.smallrye.jwt.build.Jwt;
 import jakarta.enterprise.context.ApplicationScoped;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import lombok.extern.slf4j.Slf4j;
 
 import java.util.Arrays;
 import java.util.HashSet;
 
-/**
- * Serviço para geração de JWT tokens usando SmallRye JWT
- */
+@Slf4j
 @ApplicationScoped
 public class JwtService {
 
@@ -19,20 +18,19 @@ public class JwtService {
     @ConfigProperty(name = "jwt.expiration")
     Long expiration;
 
-    /**
-     * Gera um token JWT para o usuário.
-     * @param username O email do usuário (usado como upn e subject)
-     * @return O token JWT assinado
-     */
     public String generateToken(String username) {
-        return Jwt.issuer(issuer)
+        log.debug("Generating token for user: {} with issuer: {}", username, issuer);
+
+        // NOTICE: No manual file reading or KeySpec logic needed!
+        // .sign() automatically picks up 'smallrye.jwt.sign.key.location' from application.properties
+        String token = Jwt.issuer(issuer)
                 .upn(username)
                 .subject(username)
-                .groups(new HashSet<>(Arrays.asList("User"))) // Adiciona role padrão "User"
-                .expiresIn(expiration / 1000) // expiration em ms, expiresIn espera segundos
+                .groups(new HashSet<>(Arrays.asList("User")))
+                .expiresIn(expiration / 1000)
                 .sign();
-    }
 
-    // Validação é feita automaticamente pelo Quarkus SmallRye JWT
-    // Métodos de extração manuais não são mais necessários pois SecurityIdentity injeta o Principal
+        log.debug("Token generated successfully");
+        return token;
+    }
 }

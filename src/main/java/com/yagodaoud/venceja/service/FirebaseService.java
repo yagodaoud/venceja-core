@@ -27,7 +27,7 @@ public class FirebaseService {
     @ConfigProperty(name = "firebase.storage.bucket")
     String bucketName;
 
-    @ConfigProperty(name = "quarkus.google.cloud.project-id")
+    @ConfigProperty(name = "firebase.storage.project-id")
     String projectId;
 
     @Inject
