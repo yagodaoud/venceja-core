@@ -13,6 +13,7 @@ import com.yagodaoud.venceja.repository.CategoriaRepository;
 import com.yagodaoud.venceja.repository.UserRepository;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
+import jakarta.persistence.EntityManager;
 import jakarta.transaction.Transactional;
 import lombok.extern.slf4j.Slf4j;
 import org.eclipse.microprofile.faulttolerance.Asynchronous;
@@ -25,7 +26,7 @@ import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
 /**
- * Serviço para gerenciamento de boletos
+ * Serviço para gerenciamento de boletos com otimizações de memória
  */
 @Slf4j
 @ApplicationScoped
@@ -49,9 +50,9 @@ public class BoletoService {
     @Inject
     BoletoService self;
 
-    /**
-     * Cria um boleto manualmente (sem OCR)
-     */
+    @Inject
+    EntityManager entityManager;
+
     @Transactional
     public BoletoResponse createBoleto(BoletoRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
@@ -85,14 +86,17 @@ public class BoletoService {
                 .build();
 
         boletoRepository.persist(boleto);
-        log.info("Boleto criado manualmente: ID {}", boleto.getId());
 
-        return toResponse(boleto);
+        entityManager.flush();
+
+        BoletoResponse response = toResponse(boleto);
+
+        entityManager.detach(boleto);
+
+        log.info("Boleto criado manualmente: ID {}", boleto.getId());
+        return response;
     }
 
-    /**
-     * Atualiza um boleto
-     */
     @Transactional
     public BoletoResponse updateBoleto(long id, BoletoRequest request, String userEmail) {
         UserEntity user = userRepository.findByEmail(userEmail)
@@ -124,15 +128,14 @@ public class BoletoService {
         boleto.setObservacoes(request.getObservacoes());
         boleto.setCategoria(categoria);
 
-        // Entity is managed
-        log.info("Boleto atualizado: ID {}", boleto.getId());
+        entityManager.flush();
+        BoletoResponse response = toResponse(boleto);
+        entityManager.detach(boleto);
 
-        return toResponse(boleto);
+        log.info("Boleto atualizado: ID {}", boleto.getId());
+        return response;
     }
 
-    /**
-     * Processa upload de boleto com OCR assíncrono
-     */
     @Asynchronous
     public CompletionStage<BoletoResponse> scanBoleto(
             byte[] fileBytes,
@@ -186,9 +189,9 @@ public class BoletoService {
     }
 
     /**
-     * Lista boletos do usuário com paginação e filtros de período
+     * Lista boletos com gestão de memória
      */
-    @Transactional // readOnly not supported directly
+    @Transactional
     public PagedResult<BoletoResponse> listBoletos(
             String userEmail,
             List<BoletoStatus> statuses,
@@ -198,27 +201,29 @@ public class BoletoService {
             int size,
             String sortBy,
             String direction) {
+
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        updateOverdueBoletos(user.getId());
-
-        List<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
-                user.getId(), statuses, dataInicio, dataFim, page, size, sortBy, direction);
+//        updateOverdueBoletos(user.getId())
 
         long total = boletoRepository.countByUserIdWithFilters(
                 user.getId(), statuses, dataInicio, dataFim);
+
+        List<BoletoEntity> boletos = boletoRepository.findByUserIdWithFilters(
+                user.getId(), statuses, dataInicio, dataFim, page, size, sortBy, direction);
 
         List<BoletoResponse> content = boletos.stream()
                 .map(this::toResponse)
                 .collect(Collectors.toList());
 
+        boletos.clear();
+
+        entityManager.clear();
+
         return new PagedResult<>(content, total, page, size);
     }
 
-    /**
-     * Marca boleto como pago
-     */
     @Transactional
     public BoletoResponse pagarBoleto(
             Long boletoId,
@@ -247,29 +252,38 @@ public class BoletoService {
             boleto.setComprovanteUrl(null);
         }
 
-        // Entity is managed
-        log.info("Boleto {} marcado como pago", boletoId);
+        entityManager.flush();
+        BoletoResponse response = toResponse(boleto);
+        entityManager.detach(boleto);
 
-        return toResponse(boleto);
+        log.info("Boleto {} marcado como pago", boletoId);
+        return response;
     }
 
     /**
-     * Atualiza status de boletos vencidos
+     * Process in batches to avoid memory buildup
      */
     @Transactional
     public void updateOverdueBoletos(Long userId) {
         var overdueBoletos = boletoRepository.findOverdueBoletosByUserId(userId);
-        overdueBoletos.forEach(boleto -> {
+
+        int batchSize = 20;
+        for (int i = 0; i < overdueBoletos.size(); i++) {
+            BoletoEntity boleto = overdueBoletos.get(i);
             if (boleto.getStatus() == BoletoStatus.PENDENTE) {
                 boleto.setStatus(BoletoStatus.VENCIDO);
-                // Entity is managed
             }
-        });
+
+            if (i % batchSize == 0 && i > 0) {
+                entityManager.flush();
+                entityManager.clear();
+            }
+        }
+
+        entityManager.flush();
+        entityManager.clear();
     }
 
-    /**
-     * Determina status inicial do boleto baseado na data de vencimento
-     */
     private BoletoStatus determineStatus(LocalDate vencimento) {
         if (vencimento.isBefore(LocalDate.now())) {
             return BoletoStatus.VENCIDO;
@@ -277,9 +291,6 @@ public class BoletoService {
         return BoletoStatus.PENDENTE;
     }
 
-    /**
-     * Converte entidade para DTO de resposta
-     */
     private BoletoResponse toResponse(BoletoEntity boleto) {
         CategoriaResponse categoriaResponse = null;
         if (boleto.getCategoria() != null) {
@@ -307,39 +318,31 @@ public class BoletoService {
                 .build();
     }
 
-    /**
-     * Deleta um boleto e seu comprovante associado do Firebase Storage, se existir
-     * @param boletoId ID do boleto a ser deletado
-     * @param userEmail Email do usuário autenticado
-     */
     @Transactional
     public void deletarBoleto(Long boletoId, String userEmail) {
-        // Busca o usuário
         UserEntity user = userRepository.findByEmail(userEmail)
                 .orElseThrow(() -> new RuntimeException("Usuário não encontrado"));
 
-        // Busca o boleto
         BoletoEntity boleto = boletoRepository.findByIdOptional(boletoId)
                 .orElseThrow(() -> new IllegalArgumentException("Boleto não encontrado"));
 
-        // Verifica se o boleto pertence ao usuário
         if (!boleto.getUser().getId().equals(user.getId())) {
             throw new IllegalArgumentException("Boleto não pertence ao usuário");
         }
 
-        // Remove o arquivo do Firebase Storage se existir
         if (boleto.getComprovanteUrl() != null && !boleto.getComprovanteUrl().isEmpty()) {
             try {
                 log.info("Removendo arquivo do Firebase Storage para o boleto ID: {}", boletoId);
                 firebaseService.deleteFile(boleto.getComprovanteUrl());
             } catch (Exception e) {
                 log.error("Erro ao remover arquivo do Firebase Storage para o boleto ID: {}", boletoId, e);
-                // Não interrompe o fluxo, continua com a exclusão do boleto
             }
         }
 
-        // Remove o boleto do banco de dados
         boletoRepository.delete(boleto);
+        entityManager.flush();
+        entityManager.clear();
+
         log.info("Boleto ID: {} removido com sucesso", boletoId);
     }
 }
